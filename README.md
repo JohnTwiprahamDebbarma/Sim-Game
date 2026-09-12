@@ -40,7 +40,16 @@ Sim also **cannot be drawn**. Ramsey's theorem gives R(3,3) = 6: every
 fill with nobody having lost. `make test` checks this by brute force over all
 2¹⁵ colorings.
 
-## Build and play
+## Play it
+
+**In a browser** — [johntwiprahamdebbarma.github.io/Sim-Game](https://johntwiprahamdebbarma.github.io/Sim-Game/)
+(served from `docs/`; enable GitHub Pages on the `docs` folder of `main`).
+The page ports the same negamax to JavaScript, solves the game on load, and
+marks every line you could play with whether it still loses. The port is exact:
+it reaches the same 112,096 positions and returns the same opening move as the
+C engine.
+
+**In a terminal**
 
 ```sh
 make          # build ./sim
@@ -165,7 +174,22 @@ Fixing it also cut the search from 1,918,464 positions to 216,673, since
 phantom draws were blocking cutoffs. Rewriting the duplicated search as
 negamax took it to 112,096.
 
+## Layout
+
+```
+sim.h  sim.c     the engine -- no I/O, so tests can link it
+main.c           terminal front end
+test_sim.c       engine tests
+cli_test.sh      malformed-input tests for the front end
+bench.c          reproduces the performance table
+docs/index.html  the browser version, engine and all
+```
+
 ## Reference
 
 - Ramsey theory and R(3,3) = 6 — [Wikipedia](https://en.wikipedia.org/wiki/Ramsey%27s_theorem)
 - Game of Sim — [Wikipedia](https://en.wikipedia.org/wiki/Sim_(game))
+
+## License
+
+MIT. See [LICENSE](LICENSE).

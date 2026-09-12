@@ -1,5 +1,10 @@
 # build output
 sim
+test_sim
+test_sim-sym
+simbench
+simbench-sym
+*.asan
 *.o
 *.dSYM/
 
