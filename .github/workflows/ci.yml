@@ -22,7 +22,7 @@ jobs:
       - name: Build
         run: make CC=${{ matrix.cc }} all
 
-      - name: Engine tests
+      - name: Engine tests (both memo strategies)
         run: make CC=${{ matrix.cc }} test
 
       - name: Front-end input tests

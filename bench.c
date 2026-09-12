@@ -14,13 +14,18 @@ int main(void)
     move_t m;
     double secs;
 
-    init_triangles();
+    sim_init();
     init_board(board);
 
     start = clock();
     m = best_move(board, RED);
     secs = (double)(clock() - start) / CLOCKS_PER_SEC;
 
+#if SIM_SYMMETRY
+    printf("mode              : symmetry-reduced (720 relabellings of K6)\n");
+#else
+    printf("mode              : direct table\n");
+#endif
     printf("opening value     : %+d  (%s)\n", m.score,
            m.score == -1 ? "second player wins" : "UNEXPECTED");
     printf("first move        : edge %d\n", m.line);

@@ -70,7 +70,7 @@ int main(void)
     player_t human, current = RED;
     int order, line;
 
-    init_triangles();
+    sim_init();
 
     printf("Welcome to Game of Sim\n\n"
            "Color edges of the complete graph on six dots.  Complete a triangle\n"

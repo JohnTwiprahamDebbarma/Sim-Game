@@ -230,7 +230,7 @@ int main(void)
     };
     int total_failures = 0, total_checks = 0;
 
-    init_triangles();
+    sim_init();
     printf("sim engine tests\n\n");
     for (size_t i = 0; i < sizeof tests / sizeof tests[0]; ++i) {
         checks = failures = 0;
