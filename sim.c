@@ -1,362 +1,273 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <assert.h>
-#define BOARD_SIZE (15)
 /*
- * The status of a line.
+ * The Game of Sim, solved.
+ *
+ * Two players alternately color the 15 edges of K6 (the complete graph on six
+ * vertices).  Red moves first.  A player who completes a triangle in their own
+ * color loses immediately.
+ *
+ * Sim cannot be drawn: Ramsey's theorem gives R(3,3) = 6, so every 2-coloring
+ * of K6 contains a monochromatic triangle.  Exhaustive search here confirms the
+ * classical result that Sim is a second-player win.
  */
-enum {
-    NO = 0, /* No line */
-    RED = 1,
-    BLUE = 2
-};
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+
+#define NVERT      6                  /* vertices: K6                        */
+#define BOARD_SIZE 15                 /* edges: C(6,2)                       */
+#define NTRIANGLE  20                 /* triangles: C(6,3)                   */
+
+#define EMPTY '.'
+#define RED   'R'
+#define BLUE  'B'
 
 /*
- * The board records the colors of the lines.
- * board[0] = color of 12
- * board[1] = color of 13
- * ...
- * board[14] = color of 56
+ * A board records the color of each edge.  Edges are numbered lexicographically
+ * by their endpoints:
+ *
+ *    0:12   1:13   2:14   3:15   4:16   5:23   6:24   7:25
+ *    8:26   9:34  10:35  11:36  12:45  13:46  14:56
  */
 typedef char player_t;
 typedef char board_t[BOARD_SIZE];
 
+/* ------------------------------------------------------------------ board */
+
 void init_board(board_t board)
 {
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            board[line] = '.';
-    }
+    for (int line = 0; line < BOARD_SIZE; ++line)
+        board[line] = EMPTY;
 }
-
 
 void print_board(board_t board)
 {
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            printf("%3c ", board[line]);}
+    for (int line = 0; line < BOARD_SIZE; ++line)
+        printf("%3c ", board[line]);
     printf("\n");
 }
 
-int is_full(board_t board)
+void print_key(void)
 {
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            if (board[line] == '.')
-                { return 0;}
-    }
-    return 1;
+    for (int line = 0; line < BOARD_SIZE; ++line)
+        printf("%3d ", line);
+    printf("\n");
 }
 
-bool has_lost(board_t board, player_t player){
-if ((board[0] == player && board[1] == player && board[5] == player) ||
-        (board[0] == player && board[2] == player && board[6] == player) ||
-        (board[0] == player && board[3] == player && board[7] == player) ||
-        (board[0] == player && board[4] == player && board[8] == player) ||
-        (board[1] == player && board[2] == player && board[9] == player) ||
-        (board[1] == player && board[3] == player && board[10] == player) ||
-        (board[1] == player && board[4] == player && board[11] == player) ||
-        (board[2] == player && board[3] == player && board[12] == player) ||
-        (board[2] == player && board[4] == player && board[13] == player) ||
-        (board[3] == player && board[4] == player && board[14] == player) ||
-        (board[5] == player && board[6] == player && board[9] == player) ||
-        (board[5] == player && board[7] == player && board[10] == player) ||
-        (board[5] == player && board[8] == player && board[11] == player) ||
-        (board[6] == player && board[7] == player && board[12] == player) ||
-        (board[6] == player && board[8] == player && board[13] == player) ||
-        (board[7] == player && board[8] == player && board[14] == player) ||
-        (board[9] == player && board[10] == player && board[12] == player) ||
-        (board[9] == player && board[13] == player && board[11] == player) ||
-        (board[10] == player && board[11] == player && board[14] == player) ||
-        (board[12] == player && board[13] == player && board[14] == player)) {
-        return true;
-    }
-    return false;
+bool is_full(board_t board)
+{
+    for (int line = 0; line < BOARD_SIZE; ++line)
+        if (board[line] == EMPTY)
+            return false;
+    return true;
 }
 
 player_t other_player(player_t player)
 {
-    switch (player) {
-    case 'R': return 'B';
-    case 'B': return 'R';
-    default: assert(0);
-    }
+    assert(player == RED || player == BLUE);
+    return player == RED ? BLUE : RED;
 }
 
-bool has_won(board_t board, player_t player)
+/* -------------------------------------------------------------- triangles */
+
+/* Index of the edge joining vertices u and v, in the numbering above. */
+static int edge_index(int u, int v)
 {
-    // bool losable_edges=true;
-    // player_t op = other_player(player);
-    // for (int line = 0; line < BOARD_SIZE; ++line) {
-    //     if (board[line] == '.'){
-    //         board[line] = player;
-    //         if ((!(has_lost(board, op))&&(!(has_lost(board, op))))){
-    //             losable_edges=false;}
-    //         board[line]='.';
-    //         }
-    // }
-    // return losable_edges;
-    player_t op = other_player(player);
-    if (has_lost(board,op)){
-        return true;
-    }
+    int lo = u < v ? u : v;
+    int hi = u < v ? v : u;
+
+    assert(0 <= lo && lo < hi && hi < NVERT);
+    return (NVERT - 1) * lo - lo * (lo - 1) / 2 + (hi - lo - 1);
+}
+
+/*
+ * The three edges of each triangle.  Derived from the vertex triples rather
+ * than written out by hand, so it cannot silently disagree with the numbering.
+ */
+static int triangle[NTRIANGLE][3];
+
+void init_triangles(void)
+{
+    int n = 0;
+
+    for (int a = 0; a < NVERT; ++a)
+        for (int b = a + 1; b < NVERT; ++b)
+            for (int c = b + 1; c < NVERT; ++c) {
+                triangle[n][0] = edge_index(a, b);
+                triangle[n][1] = edge_index(a, c);
+                triangle[n][2] = edge_index(b, c);
+                ++n;
+            }
+    assert(n == NTRIANGLE);
+}
+
+bool has_lost(board_t board, player_t player)
+{
+    for (int t = 0; t < NTRIANGLE; ++t)
+        if (board[triangle[t][0]] == player &&
+            board[triangle[t][1]] == player &&
+            board[triangle[t][2]] == player)
+            return true;
     return false;
 }
 
+/* ----------------------------------------------------------------- solver */
+
 typedef struct {
     int line;
-    /* -1 for a loss, 0 for a draw, 1 for a win. */
-    int score;
+    int score;                        /* -1 loss, 0 draw, +1 win, for the
+                                         player to move                      */
 } move_t;
 
-#define MAX_ORD (43046720)
+/*
+ * Every position is one base-3 digit per edge, so 3^15 entries suffice.  A
+ * stored byte is nonzero, which is what marks the slot as computed.
+ */
+#define POSITIONS 14348907L           /* 3^15 */
 
-uint8_t computed_moves[MAX_ORD+1];
+static uint8_t computed_moves[POSITIONS];
 
-uint8_t encode_move(move_t m)
+static long ord(board_t board)
 {
-    uint8_t b = 0;
+    long i = 0;
 
-    assert(0 <= m.line && m.line <= 14);
-    b |= m.line;
-    switch (m.score) {
-    case -1: b |= 1 << 6; break;
-    case 0: b |= 1 << 5; break;
-    case 1: b |= 1 << 4; break;
+    for (int line = BOARD_SIZE - 1; line >= 0; --line) {
+        int d;
+        switch (board[line]) {
+        case RED:  d = 1; break;
+        case BLUE: d = 2; break;
+        default:   d = 0; break;
+        }
+        i = i * 3 + d;
     }
-
-    return b;
+    return i;
 }
 
-move_t decode_move(uint8_t b)
+static uint8_t encode_move(move_t m)
+{
+    assert(0 <= m.line && m.line < BOARD_SIZE);
+    assert(-1 <= m.score && m.score <= 1);
+    return (uint8_t)(m.line | (1 << (5 + m.score)));
+}
+
+static move_t decode_move(uint8_t b)
 {
     move_t m;
-    m.line = b & 0xf;
-    if (b & 0x10) m.score = 1;
-    if (b & 0x20) m.score = 0;
-    if (b & 0x40) m.score = -1;
+
+    m.line = b & 0x0f;
+    if (b & 0x10)      m.score = -1;
+    else if (b & 0x20) m.score = 0;
+    else               { assert(b & 0x40); m.score = 1; }
     return m;
 }
 
-int ord1(board_t board)
+#ifndef NDEBUG
+/*
+ * Positions are memoized by board alone.  That is sound only because Red moves
+ * first and the players strictly alternate, which makes the side to move a
+ * function of the number of colored edges rather than extra key material.
+ */
+static player_t side_to_move(board_t board)
 {
-    int p = 1;
-    int i = 0;
-    int d;
+    int red = 0, blue = 0;
 
     for (int line = 0; line < BOARD_SIZE; ++line) {
-            switch (board[line]) {
-            case 'R': d = 1; break;
-            case 'B': d = 2; break;
-            case '.': d = 0; break;
-            }
-            i += d * p;
-            p *= 3;
+        if (board[line] == RED) ++red;
+        else if (board[line] == BLUE) ++blue;
     }
-
-    return i;
+    assert(red == blue || red == blue + 1);
+    return red == blue ? RED : BLUE;
 }
+#endif
 
 /*
- * board should be an unfinished game.
+ * Best move for `player`, to move on an unfinished board.  Negamax: the value
+ * of a position is the negation of the best the opponent can do in reply.
  */
-move_t best_move1(board_t board, player_t player)
+move_t best_move(board_t board, player_t player)
 {
-    move_t response;
-    move_t candidate;
-    int no_candidate = 1;
+    move_t best = { .line = -1, .score = -1 };
+    long o = ord(board);
 
-    int o = ord1(board);
+    assert(player == side_to_move(board));
 
-    if (computed_moves[o]) {
+    if (computed_moves[o])
         return decode_move(computed_moves[o]);
-    }
 
     for (int line = 0; line < BOARD_SIZE; ++line) {
-            if (board[line] == '.') {
-                board[line] = player;
-                if (has_won(board, player)) {
-                    board[line] = '.';
-                    computed_moves[o] = encode_move(candidate = (move_t) {
-                        .line = line,
-                        .score = 1
-                        });
-                    return candidate;
-                }
-                board[line] = '.';
-            }
+        int score;
+
+        if (board[line] != EMPTY)
+            continue;
+
+        board[line] = player;
+        if (has_lost(board, player)) {
+            score = -1;               /* this edge closes our own triangle   */
+        } else if (is_full(board)) {
+            /* Unreachable: by R(3,3) = 6 the edge just played closed one. */
+            assert(0);
+            score = -1;
+        } else {
+            score = -best_move(board, other_player(player)).score;
+        }
+        board[line] = EMPTY;
+
+        if (best.line < 0 || score > best.score) {
+            best.line = line;
+            best.score = score;
+            if (score == 1)
+                break;                /* cannot do better than winning       */
+        }
     }
 
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            if (board[line] == '.') {
-                board[line] = player;
-                if (is_full(board)) {
-                    board[line] = '.';
-                    /*
-                     * The mover just colored the final edge.  By Ramsey's
-                     * theorem R(3,3) = 6, every 2-coloring of K6 contains a
-                     * monochromatic triangle.  The game would already have
-                     * ended if the opponent had completed one, so the triangle
-                     * must be the mover's own: filling the last edge always
-                     * loses.  Sim can never be drawn.
-                     */
-                    computed_moves[o] = encode_move(candidate = (move_t) {
-                        .line = line,
-                        .score = -1
-                        });
-                    return candidate;
-                }
-                response = best_move1(board, other_player(player));
-                board[line] = '.';
-                if (response.score == -1) {
-                    computed_moves[o] = encode_move(candidate = (move_t) {
-                        .line = line,
-                        .score = 1
-                        });
-                    return candidate;
-                } else if (response.score == 0) {
-                    candidate = (move_t) {
-                        .line = line,
-                        .score = 0
-                    };
-                    no_candidate = 0;
-                } else { /* response.score == +1 */
-                    if (no_candidate) {
-                        candidate = (move_t) {
-                            .line = line,
-                            .score = -1
-                        };
-                        no_candidate = 0;
-                    }
-                }
-            }
-    }
-    computed_moves[o] = encode_move(candidate);
-    return candidate;
+    assert(best.line >= 0);
+    computed_moves[o] = encode_move(best);
+    return best;
 }
 
-
-
-
-
-
-int ord2(board_t board)
-{
-    int p = 1;
-    int i = 0;
-    int d;
-
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            switch (board[line]) {
-            case 'B': d = 1; break;
-            case 'R': d = 2; break;
-            case '.': d = 0; break;
-            }
-            i += d * p;
-            p *= 3;
-    }
-
-    return i;
-}
+/* ------------------------------------------------------------------- game */
 
 /*
- * board should be an unfinished game.
+ * Read one move from the player.  Returns false at end of input.  A rejected
+ * move sets *line to -1, leaving the caller to prompt again.
  */
-move_t best_move2(board_t board, player_t player)
+static bool read_move(board_t board, int *line)
 {
-    move_t response;
-    move_t candidate;
-    int no_candidate = 1;
+    int move, rc;
 
-    int o = ord2(board);
-
-    if (computed_moves[o]) {
-        return decode_move(computed_moves[o]);
+    printf("Enter your move: ");
+    rc = scanf("%d", &move);
+    if (rc == EOF) {
+        printf("\nInput ended; exiting.\n");
+        return false;
     }
 
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            if (board[line] == '.') {
-                board[line] = player;
-                if (has_won(board, player)) {
-                    board[line] = '.';
-                    computed_moves[o] = encode_move(candidate = (move_t) {
-                        .line = line,
-                        .score = 1
-                        });
-                    return candidate;
-                }
-                board[line] = '.';
-            }
+    *line = -1;
+    if (rc != 1) {                    /* not a number: discard the token     */
+        int ch;
+        while ((ch = getchar()) != '\n' && ch != EOF)
+            { }
+        printf("Invalid Move: please enter a number.\n");
+    } else if (move < 0 || move >= BOARD_SIZE) {
+        printf("Invalid Move: choose a line from 0 to %d.\n", BOARD_SIZE - 1);
+    } else if (board[move] != EMPTY) {
+        printf("Invalid Move: line %d is already colored.\n", move);
+    } else {
+        *line = move;
     }
-
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-            if (board[line] == '.') {
-                board[line] = player;
-                if (is_full(board)) {
-                    board[line] = '.';
-                    /*
-                     * The mover just colored the final edge.  By Ramsey's
-                     * theorem R(3,3) = 6, every 2-coloring of K6 contains a
-                     * monochromatic triangle.  The game would already have
-                     * ended if the opponent had completed one, so the triangle
-                     * must be the mover's own: filling the last edge always
-                     * loses.  Sim can never be drawn.
-                     */
-                    computed_moves[o] = encode_move(candidate = (move_t) {
-                        .line = line,
-                        .score = -1
-                        });
-                    return candidate;
-                }
-                response = best_move2(board, other_player(player));
-                board[line] = '.';
-                if (response.score == -1) {
-                    computed_moves[o] = encode_move(candidate = (move_t) {
-                        .line = line,
-                        .score = 1
-                        });
-                    return candidate;
-                } else if (response.score == 0) {
-                    candidate = (move_t) {
-                        .line = line,
-                        .score = 0
-                    };
-                    no_candidate = 0;
-                } else { /* response.score == +1 */
-                    if (no_candidate) {
-                        candidate = (move_t) {
-                            .line = line,
-                            .score = -1
-                        };
-                        no_candidate = 0;
-                    }
-                }
-            }
-    }
-    computed_moves[o] = encode_move(candidate);
-    return candidate;
+    return true;
 }
-
-
-
-
-
-void print_key(void)
-{
-    int i = 0;
-    for (int line = 0; line < BOARD_SIZE; ++line) {
-                printf("%3d ", i++);
-    }
-    printf("\n");
-}
-
 
 int main(void)
 {
-    int move, line, rc;
     board_t board;
-    move_t response;
-    player_t current = 'R';
-    printf("Welcome to Game of Sim\nEnter 1 if you are the first (Red) player and 2 otherwise (Blue):");
-    int order;
+    player_t human, current = RED;
+    int order, line;
+
+    init_triangles();
+
+    printf("Welcome to Game of Sim\n"
+           "Enter 1 if you are the first (Red) player and 2 otherwise (Blue): ");
     if (scanf("%d", &order) != 1) {
         printf("\nInput ended or was not a number; exiting.\n");
         return 1;
@@ -365,163 +276,38 @@ int main(void)
         printf("Please enter 1 (Red, first) or 2 (Blue, second).\n");
         return 1;
     }
-    if(order==1){
+    human = (order == 1) ? RED : BLUE;
+
     init_board(board);
-    while (1) {
-        print_board(board);
-        print_key();
-        printf("\n\n");
-        if (current == 'R') {
-            printf("Enter your move: ");
-            rc = scanf("%d", &move);
-            if (rc == EOF) {
-                printf("\nInput ended; exiting.\n");
-                return 1;
-            }
-            if (rc != 1) {                      /* non-numeric: drop the token */
-                int ch;
-                while ((ch = getchar()) != '\n' && ch != EOF) { }
-                printf("Invalid Move: please enter a number.\n");
-                continue;
-            }
-            line = move;
-            if (line < 0 || line >= BOARD_SIZE) {
-                printf("Invalid Move: choose a line from 0 to %d.\n",
-                       BOARD_SIZE - 1);
-                continue;
-            }
-            if (board[line] != '.') {
-                printf("Invalid Move: line %d is already colored.\n", line);
-                continue;
-            }
-            board[line] = current;
-        } else {
-            printf("Computer's Move.......\n");
-            response = best_move1(board, current);
-            board[response.line] = current;
-        }
-        if (has_won(board, current)) {
-            print_board(board);
-            print_key();
-            printf("\n\n");
-//            printf("Player %c has won!\n", current);
-//            printf("Computer was B and you are R");
-            if (current=='R'){
-                printf("Congratulations, You Have Won\nComputer Has Lost");
-            }
-            else if(current=='B'){
-                printf("Sadly, You Have Lost\nComputer Has Won");
-            }
-            else{
-                printf("SOME ERROR IS THERE");
-            }
-            break;
-        }
-        else if (has_lost(board, current)){
-            print_board(board);
-            printf("\n\n");
-//            printf("Player %c has lost!\n", current);
-//            printf("Computer was B and you are R");
-            if (current=='R'){
-                printf("Sadly, You Have Lost\nComputer Has Won");
-            }
-            else if(current=='B'){
-                printf("Congratulations, You Have Won\nComputer Has Lost");
-            }
-            else{
-                printf("SOME ERROR IS THERE");
-            }
-            break;}
-         else if (is_full(board)) {
-            print_board(board);
-            printf("\n\n");
-            printf("Draw.\n");
-            break;
-        }
-        current = other_player(current);
-    }
-    }
-else{
-    init_board(board);
-    board[0]='R';
-    current = 'B';
-    while (1) {
+    for (;;) {
         print_board(board);
         print_key();
         printf("\n\n");
 
-        if (current == 'B') {
-            printf("Enter your move: ");
-            rc = scanf("%d", &move);
-            if (rc == EOF) {
-                printf("\nInput ended; exiting.\n");
+        if (current == human) {
+            if (!read_move(board, &line))
                 return 1;
-            }
-            if (rc != 1) {                      /* non-numeric: drop the token */
-                int ch;
-                while ((ch = getchar()) != '\n' && ch != EOF) { }
-                printf("Invalid Move: please enter a number.\n");
-                continue;
-            }
-            line = move;
-            if (line < 0 || line >= BOARD_SIZE) {
-                printf("Invalid Move: choose a line from 0 to %d.\n",
-                       BOARD_SIZE - 1);
-                continue;
-            }
-            if (board[line] != '.') {
-                printf("Invalid Move: line %d is already colored.\n", line);
-                continue;
-            }
+            if (line < 0)
+                continue;             /* rejected; ask again                 */
             board[line] = current;
         } else {
             printf("Computer's Move.......\n");
-            response = best_move2(board, current);
-            board[response.line] = current;
+            board[best_move(board, current).line] = current;
         }
-        if (has_won(board, current)) {
+
+        if (has_lost(board, current)) {
             print_board(board);
             print_key();
             printf("\n\n");
-//            printf("Player %c has won!\n", current);
-//            printf("Computer was R and you are B");
-            if (current=='R'){
-                printf("Sadly, You Have Lost\nComputer Has Won");
-            }
-            else if(current=='B'){
-                printf("Congartulations, You Have Won\nComputer Has Lost");
-            }
-            else{
-                printf("SOME ERROR IS THERE");
-            }
-            break;}
-
-        else if (has_lost(board, current)){
-            print_board(board);
-            print_key();
-            printf("\n\n");
-//            printf("Player %c has lost!\n", current);
-//            printf("Computer was R and you are B");
-            if (current=='R'){
-                printf("Congratulations, You Have Won\nComputer Has Lost");
-            }
-            else if(current=='B'){
-                printf("Sadly, You Have Lost\nComputer Has Won");
-            }
-            else{
-                printf("SOME ERROR IS THERE");
-            }
-            break;}
-
-        else if (is_full(board)) {
-            print_board(board);
-            printf("\n\n");
-            printf("Draw.\n");
+            if (current == human)
+                printf("Sadly, You Have Lost\nComputer Has Won\n");
+            else
+                printf("Congratulations, You Have Won\nComputer Has Lost\n");
             break;
         }
+
+        assert(!is_full(board));      /* R(3,3) = 6 forbids an undecided fill */
         current = other_player(current);
     }
-    }
-
     return 0;
 }
