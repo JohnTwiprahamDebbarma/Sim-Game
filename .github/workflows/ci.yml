@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        cc: [gcc, clang]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make CC=${{ matrix.cc }} all
+
+      - name: Engine tests
+        run: make CC=${{ matrix.cc }} test
+
+      - name: Front-end input tests
+        run: make CC=${{ matrix.cc }} cli
+
+      - name: AddressSanitizer and UBSan
+        run: make CC=${{ matrix.cc }} asan
+
+      - name: Benchmark
+        run: make CC=${{ matrix.cc }} bench

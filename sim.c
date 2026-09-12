@@ -1,36 +1,11 @@
 /*
- * The Game of Sim, solved.
- *
- * Two players alternately color the 15 edges of K6 (the complete graph on six
- * vertices).  Red moves first.  A player who completes a triangle in their own
- * color loses immediately.
- *
- * Sim cannot be drawn: Ramsey's theorem gives R(3,3) = 6, so every 2-coloring
- * of K6 contains a monochromatic triangle.  Exhaustive search here confirms the
- * classical result that Sim is a second-player win.
+ * The Game of Sim -- solver engine.  See sim.h.
  */
+#include "sim.h"
+
 #include <assert.h>
-#include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
-
-#define NVERT      6                  /* vertices: K6                        */
-#define BOARD_SIZE 15                 /* edges: C(6,2)                       */
-#define NTRIANGLE  20                 /* triangles: C(6,3)                   */
-
-#define EMPTY '.'
-#define RED   'R'
-#define BLUE  'B'
-
-/*
- * A board records the color of each edge.  Edges are numbered lexicographically
- * by their endpoints:
- *
- *    0:12   1:13   2:14   3:15   4:16   5:23   6:24   7:25
- *    8:26   9:34  10:35  11:36  12:45  13:46  14:56
- */
-typedef char player_t;
-typedef char board_t[BOARD_SIZE];
+#include <string.h>
 
 /* ------------------------------------------------------------------ board */
 
@@ -38,20 +13,6 @@ void init_board(board_t board)
 {
     for (int line = 0; line < BOARD_SIZE; ++line)
         board[line] = EMPTY;
-}
-
-void print_board(board_t board)
-{
-    for (int line = 0; line < BOARD_SIZE; ++line)
-        printf("%3c ", board[line]);
-    printf("\n");
-}
-
-void print_key(void)
-{
-    for (int line = 0; line < BOARD_SIZE; ++line)
-        printf("%3d ", line);
-    printf("\n");
 }
 
 bool is_full(board_t board)
@@ -70,8 +31,7 @@ player_t other_player(player_t player)
 
 /* -------------------------------------------------------------- triangles */
 
-/* Index of the edge joining vertices u and v, in the numbering above. */
-static int edge_index(int u, int v)
+int edge_index(int u, int v)
 {
     int lo = u < v ? u : v;
     int hi = u < v ? v : u;
@@ -80,11 +40,7 @@ static int edge_index(int u, int v)
     return (NVERT - 1) * lo - lo * (lo - 1) / 2 + (hi - lo - 1);
 }
 
-/*
- * The three edges of each triangle.  Derived from the vertex triples rather
- * than written out by hand, so it cannot silently disagree with the numbering.
- */
-static int triangle[NTRIANGLE][3];
+int triangle[NTRIANGLE][3];
 
 void init_triangles(void)
 {
@@ -113,12 +69,6 @@ bool has_lost(board_t board, player_t player)
 
 /* ----------------------------------------------------------------- solver */
 
-typedef struct {
-    int line;
-    int score;                        /* -1 loss, 0 draw, +1 win, for the
-                                         player to move                      */
-} move_t;
-
 /*
  * Every position is one base-3 digit per edge, so 3^15 entries suffice.  A
  * stored byte is nonzero, which is what marks the slot as computed.
@@ -126,6 +76,21 @@ typedef struct {
 #define POSITIONS 14348907L           /* 3^15 */
 
 static uint8_t computed_moves[POSITIONS];
+
+long memo_entries(void)
+{
+    long used = 0;
+
+    for (long i = 0; i < POSITIONS; ++i)
+        if (computed_moves[i])
+            ++used;
+    return used;
+}
+
+void reset_memo(void)
+{
+    memset(computed_moves, 0, sizeof computed_moves);
+}
 
 static long ord(board_t board)
 {
@@ -181,8 +146,8 @@ static player_t side_to_move(board_t board)
 #endif
 
 /*
- * Best move for `player`, to move on an unfinished board.  Negamax: the value
- * of a position is the negation of the best the opponent can do in reply.
+ * Negamax: the value of a position is the negation of the best the opponent
+ * can do in reply.
  */
 move_t best_move(board_t board, player_t player)
 {
@@ -223,91 +188,4 @@ move_t best_move(board_t board, player_t player)
     assert(best.line >= 0);
     computed_moves[o] = encode_move(best);
     return best;
-}
-
-/* ------------------------------------------------------------------- game */
-
-/*
- * Read one move from the player.  Returns false at end of input.  A rejected
- * move sets *line to -1, leaving the caller to prompt again.
- */
-static bool read_move(board_t board, int *line)
-{
-    int move, rc;
-
-    printf("Enter your move: ");
-    rc = scanf("%d", &move);
-    if (rc == EOF) {
-        printf("\nInput ended; exiting.\n");
-        return false;
-    }
-
-    *line = -1;
-    if (rc != 1) {                    /* not a number: discard the token     */
-        int ch;
-        while ((ch = getchar()) != '\n' && ch != EOF)
-            { }
-        printf("Invalid Move: please enter a number.\n");
-    } else if (move < 0 || move >= BOARD_SIZE) {
-        printf("Invalid Move: choose a line from 0 to %d.\n", BOARD_SIZE - 1);
-    } else if (board[move] != EMPTY) {
-        printf("Invalid Move: line %d is already colored.\n", move);
-    } else {
-        *line = move;
-    }
-    return true;
-}
-
-int main(void)
-{
-    board_t board;
-    player_t human, current = RED;
-    int order, line;
-
-    init_triangles();
-
-    printf("Welcome to Game of Sim\n"
-           "Enter 1 if you are the first (Red) player and 2 otherwise (Blue): ");
-    if (scanf("%d", &order) != 1) {
-        printf("\nInput ended or was not a number; exiting.\n");
-        return 1;
-    }
-    if (order != 1 && order != 2) {
-        printf("Please enter 1 (Red, first) or 2 (Blue, second).\n");
-        return 1;
-    }
-    human = (order == 1) ? RED : BLUE;
-
-    init_board(board);
-    for (;;) {
-        print_board(board);
-        print_key();
-        printf("\n\n");
-
-        if (current == human) {
-            if (!read_move(board, &line))
-                return 1;
-            if (line < 0)
-                continue;             /* rejected; ask again                 */
-            board[line] = current;
-        } else {
-            printf("Computer's Move.......\n");
-            board[best_move(board, current).line] = current;
-        }
-
-        if (has_lost(board, current)) {
-            print_board(board);
-            print_key();
-            printf("\n\n");
-            if (current == human)
-                printf("Sadly, You Have Lost\nComputer Has Won\n");
-            else
-                printf("Congratulations, You Have Won\nComputer Has Lost\n");
-            break;
-        }
-
-        assert(!is_full(board));      /* R(3,3) = 6 forbids an undecided fill */
-        current = other_player(current);
-    }
-    return 0;
 }
