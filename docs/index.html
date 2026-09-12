@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sim, Solved</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --plate:      #edede8;
+  --plate-deep: #e3e3dc;
+  --ink:        #16181d;
+  --ink-soft:   #565a63;
+  --ink-faint:  #8a8d93;
+  --rule:       #c9c9c1;
+  --pencil:     #b3b3aa;
+  --red:        #cc3b2a;
+  --blue:       #2b4c9b;
+  --red-wash:   rgba(204, 59, 42, .15);
+  --blue-wash:  rgba(43, 76, 155, .15);
+  --focus:      #1f7a6c;
+
+  --f-display: "Spectral", Georgia, "Times New Roman", serif;
+  --f-body:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --plate:      #10141c;
+    --plate-deep: #171d27;
+    --ink:        #dde3ec;
+    --ink-soft:   #9aa5b6;
+    --ink-faint:  #6b7688;
+    --rule:       #2a3242;
+    --pencil:     #3d475a;
+    --red:        #f2634e;
+    --blue:       #6e9be8;
+    --red-wash:   rgba(242, 99, 78, .18);
+    --blue-wash:  rgba(110, 155, 232, .18);
+    --focus:      #4ec9b0;
+  }
+}
+:root[data-theme="dark"] {
+  --plate:      #10141c;
+  --plate-deep: #171d27;
+  --ink:        #dde3ec;
+  --ink-soft:   #9aa5b6;
+  --ink-faint:  #6b7688;
+  --rule:       #2a3242;
+  --pencil:     #3d475a;
+  --red:        #f2634e;
+  --blue:       #6e9be8;
+  --red-wash:   rgba(242, 99, 78, .18);
+  --blue-wash:  rgba(110, 155, 232, .18);
+  --focus:      #4ec9b0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plate);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.plate {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 28px 64px;
+}
+
+/* ---------------------------------------------------------- masthead */
+
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 20px;
+  margin-bottom: 30px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 32px;
+  align-items: baseline;
+}
+.wordmark {
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.015em;
+}
+.wordmark span { color: var(--red); }
+.thesis {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--ink-soft);
+  font-size: 15px;
+  text-wrap: pretty;
+}
+.thesis b { color: var(--ink); font-weight: 600; }
+
+/* ------------------------------------------------------------- work */
+
+.work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: 40px;
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .work { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+}
+
+/* ----------------------------------------------------------- figure */
+
+.figure { margin: 0; }
+.figure-frame {
+  border: 1px solid var(--rule);
+  background: var(--plate-deep);
+  padding: 10px;
+}
+#board { display: block; width: 100%; height: auto; }
+
+figcaption {
+  margin-top: 12px;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  letter-spacing: .01em;
+}
+figcaption .fig { color: var(--ink-faint); }
+figcaption.verdict { color: var(--ink); }
+
+/* edges */
+.hit { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; }
+.hit:focus-visible { outline: none; }
+.hit.dead { cursor: default; }
+.edge { fill: none; stroke-linecap: round; transition: stroke-width .12s ease, stroke .12s ease, opacity .12s ease; }
+.edge.free    { stroke: var(--pencil); stroke-width: 1.5; }
+.edge.red     { stroke: var(--red);    stroke-width: 5; }
+.edge.blue    { stroke: var(--blue);   stroke-width: 5; }
+.edge.hover   { stroke-width: 5; opacity: .5; }
+.edge.doomed  { stroke-dasharray: 2 4; }
+.edge.saving  { stroke-width: 3.5; opacity: .55; }
+.hit:focus-visible + .edge { stroke: var(--focus); stroke-width: 5; }
+
+.vertex { fill: var(--ink); }
+.vertex-ring { fill: var(--plate-deep); stroke: var(--ink); stroke-width: 1.5; }
+.vlabel {
+  fill: var(--ink-soft);
+  font-family: var(--f-mono);
+  font-size: 13px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.wash { stroke: none; }
+.elabel {
+  fill: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge { transition: none; }
+}
+
+/* ------------------------------------------------------------ panel */
+
+.panel { display: flex; flex-direction: column; gap: 24px; }
+
+.block-label {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .11em;
+  color: var(--ink-faint);
+  margin-bottom: 9px;
+}
+
+.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.side {
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  padding: 9px 11px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  line-height: 1.3;
+}
+.side small {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-top: 3px;
+}
+.side:hover { border-color: var(--ink-faint); }
+.side[aria-pressed="true"] { color: var(--ink); border-color: currentColor; }
+.side[aria-pressed="true"].as-red  { border-color: var(--red);  box-shadow: inset 3px 0 0 var(--red); }
+.side[aria-pressed="true"].as-blue { border-color: var(--blue); box-shadow: inset 3px 0 0 var(--blue); }
+.side:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.readout {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  border-top: 1px solid var(--rule);
+}
+.readout .row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.readout dt { color: var(--ink-faint); }
+.readout dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.readout dd.red  { color: var(--red); }
+.readout dd.blue { color: var(--blue); }
+
+.swatch {
+  display: inline-block;
+  width: 9px; height: 9px;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+.swatch.red  { background: var(--red); }
+.swatch.blue { background: var(--blue); }
+
+.toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.toggle input { margin: 3px 0 0; accent-color: var(--red); flex: none; }
+.toggle span b { color: var(--ink); font-weight: 500; display: block; }
+.legend {
+  margin-top: 10px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  display: none;
+  gap: 5px;
+  flex-direction: column;
+}
+.legend.on { display: flex; }
+.legend i { font-style: normal; color: var(--ink-soft); }
+
+.actions { display: flex; gap: 8px; }
+.btn {
+  flex: 1;
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--ink-faint); }
+.btn:disabled { color: var(--ink-faint); cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.colophon {
+  border-top: 1px solid var(--rule);
+  padding-top: 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+.colophon a { color: var(--ink-soft); text-decoration-color: var(--rule); text-underline-offset: 2px; }
+.colophon a:hover { color: var(--ink); }
+.colophon p { margin: 0 0 8px; }
+.colophon p:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="plate">
+
+  <header class="masthead">
+    <div class="wordmark">Sim<span>.</span></div>
+    <p class="thesis">
+      Six dots, every pair joined by a line. Colour a line on your turn; complete a
+      triangle in <b>your own</b> colour and you lose at once. It cannot be drawn, and
+      the second player always wins — <b>this page plays that win perfectly</b>.
+    </p>
+  </header>
+
+  <div class="work">
+
+    <figure class="figure">
+      <div class="figure-frame">
+        <svg id="board" viewBox="0 0 440 424" role="application"
+             aria-label="Sim board: the complete graph on six dots"></svg>
+      </div>
+      <figcaption id="caption">
+        <span class="fig">Fig. 1</span> — K<sub>6</sub>, the complete graph on six dots:
+        fifteen edges, twenty triangles.
+      </figcaption>
+    </figure>
+
+    <aside class="panel">
+
+      <div>
+        <div class="block-label">You play</div>
+        <div class="sides">
+          <button type="button" class="side as-red"  id="pickRed"  aria-pressed="true">
+            Red<small>moves first</small>
+          </button>
+          <button type="button" class="side as-blue" id="pickBlue" aria-pressed="false">
+            Blue<small>moves second</small>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div class="block-label">Position</div>
+        <dl class="readout">
+          <div class="row"><dt>to move</dt><dd id="rToMove">Red</dd></div>
+          <div class="row"><dt>lines</dt><dd id="rLines">R 0 &nbsp; B 0</dd></div>
+          <div class="row"><dt>verdict</dt><dd id="rVerdict">Red loses</dd></div>
+          <div class="row"><dt>solved</dt><dd id="rSolved">not yet</dd></div>
+        </dl>
+      </div>
+
+      <div>
+        <label class="toggle">
+          <input type="checkbox" id="analysis">
+          <span><b>Mark every move</b>Show which lines still lose the game.</span>
+        </label>
+        <div class="legend" id="legend">
+          <i>—— solid &nbsp; keeps the win</i>
+          <i>· · · dotted &nbsp; loses with perfect play</i>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn" id="undo" disabled>Undo</button>
+        <button type="button" class="btn" id="restart">New game</button>
+      </div>
+
+      <div class="colophon">
+        <p>The engine searches the whole game once, then answers instantly. It is the
+        same negamax written in C in the
+        <a href="https://github.com/JohnTwiprahamDebbarma/Sim-Game">repository</a>,
+        ported here.</p>
+        <p>No draw is possible: Ramsey's theorem gives R(3,3)&nbsp;=&nbsp;6, so any
+        two-colouring of K<sub>6</sub> contains a monochromatic triangle.</p>
+      </div>
+
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------ engine
+     A position is two 15-bit masks. Edges are numbered lexicographically
+     by their endpoints, matching sim.c exactly. */
+
+  var NV = 6, NE = 15;
+  var ends = [], idx = {};
+  for (var u = 0, e = 0; u < NV; u++)
+    for (var v = u + 1; v < NV; v++, e++) { ends.push([u, v]); idx[u + "," + v] = e; }
+
+  function edgeOf(a, b) { return idx[Math.min(a, b) + "," + Math.max(a, b)]; }
+
+  var triVerts = [], triMask = [], edgeTri = [];
+  for (var i = 0; i < NE; i++) edgeTri.push([]);
+  for (var a = 0; a < NV; a++)
+    for (var b = a + 1; b < NV; b++)
+      for (var c = b + 1; c < NV; c++) {
+        var t = [edgeOf(a, b), edgeOf(a, c), edgeOf(b, c)];
+        var m = (1 << t[0]) | (1 << t[1]) | (1 << t[2]);
+        triVerts.push([a, b, c]);
+        triMask.push(m);
+        t.forEach(function (x) { edgeTri[x].push(m); });
+      }
+
+  function closes(mine, edge) {
+    var list = edgeTri[edge];
+    for (var k = 0; k < list.length; k++)
+      if ((mine & list[k]) === list[k]) return true;
+    return false;
+  }
+
+  function monoTriangle(mask) {
+    for (var k = 0; k < triMask.length; k++)
+      if ((mask & triMask[k]) === triMask[k]) return k;
+    return -1;
+  }
+
+  /* Negamax with a transposition table. Value is for the side to move:
+     +1 win, -1 loss. Draws do not exist, so those are the only two. */
+  var memo = new Map(), nodes = 0;
+
+  function solve(red, blue, redToMove) {
+    var key = red * 32768 + blue;
+    var hit = memo.get(key);
+    if (hit !== undefined) return hit;
+
+    nodes++;
+    var occ = red | blue, bestLine = -1, bestScore = -1;
+
+    for (var q = 0; q < NE; q++) {
+      if (occ & (1 << q)) continue;
+      var mine = (redToMove ? red : blue) | (1 << q), score;
+      if (closes(mine, q)) {
+        score = -1;
+      } else {
+        var nr = redToMove ? mine : red, nb = redToMove ? blue : mine;
+        score = -(((solve(nr, nb, !redToMove) >> 4) - 1));
+      }
+      if (bestLine < 0 || score > bestScore) {
+        bestLine = q; bestScore = score;
+        if (score === 1) break;
+      }
+    }
+    var enc = bestLine | ((bestScore + 1) << 4);
+    memo.set(key, enc);
+    return enc;
+  }
+
+  function valueOf(red, blue, redToMove) { return (solve(red, blue, redToMove) >> 4) - 1; }
+  function lineOf(red, blue, redToMove)  { return solve(red, blue, redToMove) & 15; }
+
+  /* -------------------------------------------------------------- state */
+
+  var RED = 0, BLUE = 1;
+  var st = {
+    red: 0, blue: 0,
+    turn: RED,
+    human: RED,
+    history: [],
+    over: false,
+    loser: -1,
+    losingTri: -1,
+    solved: false,
+    thinking: false
+  };
+
+  /* ------------------------------------------------------------ geometry */
+
+  var CX = 220, CY = 208, R = 150, LR = 182;
+  var pt = [];
+  for (var n = 0; n < NV; n++) {
+    var ang = (-90 + n * 60) * Math.PI / 180;
+    pt.push({ x: CX + R * Math.cos(ang), y: CY + R * Math.sin(ang),
+              lx: CX + LR * Math.cos(ang), ly: CY + LR * Math.sin(ang) });
+  }
+
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var board = document.getElementById("board");
+  var washEl, edgeEls = [], hitEls = [];
+
+  function svg(tag, attrs) {
+    var el = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  function buildBoard() {
+    washEl = svg("polygon", { class: "wash", points: "", fill: "none" });
+    board.appendChild(washEl);
+
+    for (var q = 0; q < NE; q++) {
+      var A = pt[ends[q][0]], B = pt[ends[q][1]];
+      var line = svg("line", { class: "edge free", x1: A.x, y1: A.y, x2: B.x, y2: B.y });
+      var hit = svg("line", { class: "hit", x1: A.x, y1: A.y, x2: B.x, y2: B.y,
+                              tabindex: "0", role: "button" });
+      hit.dataset.edge = q;
+      board.appendChild(hit);
+      board.appendChild(line);
+      edgeEls.push(line);
+      hitEls.push(hit);
+    }
+
+    for (var n = 0; n < NV; n++) {
+      board.appendChild(svg("circle", { class: "vertex-ring", cx: pt[n].x, cy: pt[n].y, r: 7 }));
+      var lab = svg("text", { class: "vlabel", x: pt[n].lx, y: pt[n].ly });
+      lab.textContent = String(n + 1);
+      board.appendChild(lab);
+    }
+  }
+
+  /* --------------------------------------------------------------- view */
+
+  var elCaption = document.getElementById("caption");
+  var elToMove  = document.getElementById("rToMove");
+  var elLines   = document.getElementById("rLines");
+  var elVerdict = document.getElementById("rVerdict");
+  var elSolved  = document.getElementById("rSolved");
+  var elUndo    = document.getElementById("undo");
+  var elAnalysis = document.getElementById("analysis");
+  var elLegend  = document.getElementById("legend");
+
+  function count(mask) { var c = 0; while (mask) { mask &= mask - 1; c++; } return c; }
+  function nameOf(side) { return side === RED ? "Red" : "Blue"; }
+
+  function render() {
+    var occ = st.red | st.blue;
+    var showMarks = elAnalysis.checked && !st.over && !st.thinking && st.solved
+                    && st.turn === st.human;
+
+    for (var q = 0; q < NE; q++) {
+      var cls = "edge ";
+      if (st.red & (1 << q))       cls += "red";
+      else if (st.blue & (1 << q)) cls += "blue";
+      else                         cls += "free";
+
+      if (showMarks && !(occ & (1 << q))) {
+        var mine = (st.turn === RED ? st.red : st.blue) | (1 << q);
+        var lost;
+        if (closes(mine, q)) {
+          lost = true;
+        } else {
+          var nr = st.turn === RED ? mine : st.red;
+          var nb = st.turn === RED ? st.blue : mine;
+          lost = valueOf(nr, nb, st.turn !== RED) === 1;
+        }
+        cls += lost ? " doomed" : " saving";
+        if (!lost) edgeEls[q].style.stroke = st.turn === RED ? "var(--red)" : "var(--blue)";
+        else edgeEls[q].style.stroke = "";
+      } else {
+        edgeEls[q].style.stroke = "";
+      }
+
+      edgeEls[q].setAttribute("class", cls);
+
+      var taken = !!(occ & (1 << q));
+      var playable = !taken && !st.over && !st.thinking && st.turn === st.human;
+      hitEls[q].setAttribute("class", playable ? "hit" : "hit dead");
+      hitEls[q].setAttribute("aria-disabled", playable ? "false" : "true");
+      hitEls[q].setAttribute("aria-label",
+        "Line " + (ends[q][0] + 1) + "–" + (ends[q][1] + 1) + ", " +
+        (taken ? ((st.red & (1 << q)) ? "red" : "blue") : "free"));
+      hitEls[q].setAttribute("tabindex", playable ? "0" : "-1");
+    }
+
+    if (st.over && st.losingTri >= 0) {
+      var vs = triVerts[st.losingTri];
+      washEl.setAttribute("points", vs.map(function (v) { return pt[v].x + "," + pt[v].y; }).join(" "));
+      washEl.setAttribute("fill", st.loser === RED ? "var(--red-wash)" : "var(--blue-wash)");
+    } else {
+      washEl.setAttribute("points", "");
+      washEl.setAttribute("fill", "none");
+    }
+
+    elLines.innerHTML = '<span class="swatch red"></span>' + count(st.red) +
+                        ' &nbsp; <span class="swatch blue"></span>' + count(st.blue);
+
+    if (st.over) {
+      elToMove.textContent = "—";
+      elToMove.className = "";
+      elVerdict.textContent = nameOf(st.loser) + " completed a triangle";
+      elVerdict.className = st.loser === RED ? "red" : "blue";
+      elCaption.className = "verdict";
+      elCaption.innerHTML =
+        '<span class="fig">Fig. 1</span> — ' + nameOf(st.loser) +
+        ' closes the triangle ' +
+        triVerts[st.losingTri].map(function (v) { return v + 1; }).join("–") +
+        '. ' + (st.loser === st.human
+                  ? "You lose."
+                  : "You win — but the engine only loses from a lost position.");
+    } else {
+      elToMove.textContent = nameOf(st.turn) + (st.turn === st.human ? " (you)" : " (engine)");
+      elToMove.className = st.turn === RED ? "red" : "blue";
+      elCaption.className = "";
+      elCaption.innerHTML =
+        '<span class="fig">Fig. 1</span> — K<sub>6</sub>, the complete graph on six dots: ' +
+        'fifteen edges, twenty triangles.';
+
+      if (!st.solved) {
+        elVerdict.textContent = "—";
+        elVerdict.className = "";
+      } else {
+        var v = valueOf(st.red, st.blue, st.turn === RED);
+        elVerdict.textContent = v === 1
+          ? nameOf(st.turn) + " wins with perfect play"
+          : nameOf(st.turn) + " loses with perfect play";
+        elVerdict.className = v === 1
+          ? (st.turn === RED ? "red" : "blue")
+          : "";
+      }
+    }
+
+    if (st.thinking) { elToMove.textContent = "engine searching…"; elToMove.className = ""; }
+
+    elSolved.textContent = st.solved
+      ? memo.size.toLocaleString() + " positions"
+      : "not yet";
+
+    elUndo.disabled = st.thinking || st.history.length === 0;
+    elLegend.className = elAnalysis.checked ? "legend on" : "legend";
+  }
+
+  /* --------------------------------------------------------------- play */
+
+  function place(edge, side) {
+    st.history.push({ red: st.red, blue: st.blue, turn: st.turn });
+    if (side === RED) st.red |= (1 << edge); else st.blue |= (1 << edge);
+
+    var mine = side === RED ? st.red : st.blue;
+    var t = monoTriangle(mine);
+    if (t >= 0) { st.over = true; st.loser = side; st.losingTri = t; }
+    else st.turn = side === RED ? BLUE : RED;
+  }
+
+  function engineTurn() {
+    if (st.over || st.turn === st.human) return;
+    st.thinking = true;
+    render();
+    setTimeout(function () {
+      if (!st.solved) { solve(0, 0, true); st.solved = true; }
+      place(lineOf(st.red, st.blue, st.turn === RED), st.turn);
+      st.thinking = false;
+      render();
+    }, 30);
+  }
+
+  function humanPlay(edge) {
+    if (st.over || st.thinking || st.turn !== st.human) return;
+    if ((st.red | st.blue) & (1 << edge)) return;
+    place(edge, st.human);
+    render();
+    engineTurn();
+  }
+
+  function newGame(human) {
+    st.red = 0; st.blue = 0; st.turn = RED; st.human = human;
+    st.history = []; st.over = false; st.loser = -1; st.losingTri = -1;
+    st.thinking = false;
+    document.getElementById("pickRed").setAttribute("aria-pressed", human === RED);
+    document.getElementById("pickBlue").setAttribute("aria-pressed", human === BLUE);
+    render();
+    if (human === BLUE) engineTurn();
+  }
+
+  function undo() {
+    if (st.thinking || !st.history.length) return;
+    /* step back to the last position where it was the player's turn */
+    do {
+      var p = st.history.pop();
+      st.red = p.red; st.blue = p.blue; st.turn = p.turn;
+    } while (st.history.length && st.turn !== st.human);
+    st.over = false; st.loser = -1; st.losingTri = -1;
+    render();
+    if (st.turn !== st.human) engineTurn();   /* undid past the engine's opening */
+  }
+
+  /* --------------------------------------------------------------- wire */
+
+  buildBoard();
+
+  hitEls.forEach(function (hit) {
+    var edge = +hit.dataset.edge;
+    hit.addEventListener("click", function () { humanPlay(edge); });
+    hit.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); humanPlay(edge); }
+    });
+    hit.addEventListener("mouseenter", function () {
+      if (st.over || st.thinking || st.turn !== st.human) return;
+      if ((st.red | st.blue) & (1 << edge)) return;
+      edgeEls[edge].classList.add("hover");
+      edgeEls[edge].style.stroke = st.human === RED ? "var(--red)" : "var(--blue)";
+    });
+    hit.addEventListener("mouseleave", function () {
+      edgeEls[edge].classList.remove("hover");
+      render();
+    });
+  });
+
+  document.getElementById("pickRed").addEventListener("click", function () { newGame(RED); });
+  document.getElementById("pickBlue").addEventListener("click", function () { newGame(BLUE); });
+  document.getElementById("restart").addEventListener("click", function () { newGame(st.human); });
+  elUndo.addEventListener("click", undo);
+  elAnalysis.addEventListener("change", function () {
+    if (elAnalysis.checked && !st.solved) {
+      st.thinking = true; render();
+      setTimeout(function () { solve(0, 0, true); st.solved = true; st.thinking = false; render(); }, 30);
+    } else render();
+  });
+
+  render();
+
+  /* Solve in the background so the first engine reply is instant. */
+  setTimeout(function () {
+    if (!st.solved) { solve(0, 0, true); st.solved = true; render(); }
+  }, 120);
+})();
+</script>
+</body>
+</html>
