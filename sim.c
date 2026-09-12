@@ -190,9 +190,17 @@ move_t best_move1(board_t board, player_t player)
                 board[line] = player;
                 if (is_full(board)) {
                     board[line] = '.';
+                    /*
+                     * The mover just colored the final edge.  By Ramsey's
+                     * theorem R(3,3) = 6, every 2-coloring of K6 contains a
+                     * monochromatic triangle.  The game would already have
+                     * ended if the opponent had completed one, so the triangle
+                     * must be the mover's own: filling the last edge always
+                     * loses.  Sim can never be drawn.
+                     */
                     computed_moves[o] = encode_move(candidate = (move_t) {
                         .line = line,
-                        .score = 0
+                        .score = -1
                         });
                     return candidate;
                 }
@@ -284,9 +292,17 @@ move_t best_move2(board_t board, player_t player)
                 board[line] = player;
                 if (is_full(board)) {
                     board[line] = '.';
+                    /*
+                     * The mover just colored the final edge.  By Ramsey's
+                     * theorem R(3,3) = 6, every 2-coloring of K6 contains a
+                     * monochromatic triangle.  The game would already have
+                     * ended if the opponent had completed one, so the triangle
+                     * must be the mover's own: filling the last edge always
+                     * loses.  Sim can never be drawn.
+                     */
                     computed_moves[o] = encode_move(candidate = (move_t) {
                         .line = line,
-                        .score = 0
+                        .score = -1
                         });
                     return candidate;
                 }
@@ -323,7 +339,7 @@ move_t best_move2(board_t board, player_t player)
 
 
 
-void print_key()
+void print_key(void)
 {
     int i = 0;
     for (int line = 0; line < BOARD_SIZE; ++line) {
@@ -333,15 +349,22 @@ void print_key()
 }
 
 
-int main()
+int main(void)
 {
-    int move, line;
+    int move, line, rc;
     board_t board;
     move_t response;
     player_t current = 'R';
     printf("Welcome to Game of Sim\nEnter 1 if you are the first (Red) player and 2 otherwise (Blue):");
     int order;
-    scanf("%d", &order);
+    if (scanf("%d", &order) != 1) {
+        printf("\nInput ended or was not a number; exiting.\n");
+        return 1;
+    }
+    if (order != 1 && order != 2) {
+        printf("Please enter 1 (Red, first) or 2 (Blue, second).\n");
+        return 1;
+    }
     if(order==1){
     init_board(board);
     while (1) {
@@ -350,12 +373,27 @@ int main()
         printf("\n\n");
         if (current == 'R') {
             printf("Enter your move: ");
-            scanf("%d", &move);
-            line = move;
-            if(board[line] != '.'){
-                printf("Invalid Move\n");
+            rc = scanf("%d", &move);
+            if (rc == EOF) {
+                printf("\nInput ended; exiting.\n");
+                return 1;
+            }
+            if (rc != 1) {                      /* non-numeric: drop the token */
+                int ch;
+                while ((ch = getchar()) != '\n' && ch != EOF) { }
+                printf("Invalid Move: please enter a number.\n");
                 continue;
-            };
+            }
+            line = move;
+            if (line < 0 || line >= BOARD_SIZE) {
+                printf("Invalid Move: choose a line from 0 to %d.\n",
+                       BOARD_SIZE - 1);
+                continue;
+            }
+            if (board[line] != '.') {
+                printf("Invalid Move: line %d is already colored.\n", line);
+                continue;
+            }
             board[line] = current;
         } else {
             printf("Computer's Move.......\n");
@@ -414,12 +452,27 @@ else{
 
         if (current == 'B') {
             printf("Enter your move: ");
-            scanf("%d", &move);
-            line = move;
-            if(board[line] != '.'){
-                printf("Invalid Move\n");
+            rc = scanf("%d", &move);
+            if (rc == EOF) {
+                printf("\nInput ended; exiting.\n");
+                return 1;
+            }
+            if (rc != 1) {                      /* non-numeric: drop the token */
+                int ch;
+                while ((ch = getchar()) != '\n' && ch != EOF) { }
+                printf("Invalid Move: please enter a number.\n");
                 continue;
-            };
+            }
+            line = move;
+            if (line < 0 || line >= BOARD_SIZE) {
+                printf("Invalid Move: choose a line from 0 to %d.\n",
+                       BOARD_SIZE - 1);
+                continue;
+            }
+            if (board[line] != '.') {
+                printf("Invalid Move: line %d is already colored.\n", line);
+                continue;
+            }
             board[line] = current;
         } else {
             printf("Computer's Move.......\n");
@@ -468,5 +521,7 @@ else{
         }
         current = other_player(current);
     }
+    }
+
     return 0;
-}}
+}
