@@ -167,7 +167,7 @@ move_t best_move(board_t board, player_t player)
 
         board[line] = player;
         if (has_lost(board, player)) {
-            score = -1;               /* this edge closes our own triangle   */
+            score = -1;               /* closes the mover's own triangle     */
         } else if (is_full(board)) {
             /* Unreachable: by R(3,3) = 6 the edge just played closed one. */
             assert(0);

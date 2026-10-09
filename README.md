@@ -139,11 +139,13 @@ mover is a two-character change.
 
 The interesting part is what the bug did *not* do. It never picked a bad move:
 across 8741 genuinely won positions, the buggy search's choice preserved the
-win every time, and it still beat a random opponent 2000 out of 2000. Because
-Sim has no draws, "not losing" and "winning" are the same set of moves, and the
-*loss* labels were already correct — enough for perfect play even while the
-win/draw labels were wrong. The bug corrupted the analysis and left the play
-intact, which is exactly why testing by playing it would never have caught it.
+win every time, and it still beat a random opponent 2000 out of 2000. The wrong
+scores were wrong in a way that kept the moves in order. With Red to move,
+winning moves scored +1 and losing moves 0 or -1; with Blue to move, winning
+moves scored 0 or +1 and losing moves -1. Either way every winning move
+outscored every losing move, so picking the highest score always found a win.
+The bug corrupted the analysis and left the play intact, which is exactly why
+testing by playing it would never have caught it.
 
 Fixing it also cut the search from 1,918,464 positions to 216,673, since
 phantom draws were blocking cutoffs. Rewriting the duplicated search as
