@@ -18,22 +18,11 @@ The solver proves this by exhaustive search:
 
 ```
 $ make bench
---- plain ---
-mode              : direct table
 opening value     : -1  (second player wins)
 first move        : edge 0
 positions memoized: 112096
-solve time        : 0.008 s
---- symmetry reduced ---
-mode              : symmetry-reduced (720 relabellings of K6)
-opening value     : -1  (second player wins)
-first move        : edge 0
-positions memoized: 3112
-solve time        : 0.007 s
+solve time        : 0.023 s
 ```
-
-Both builds agree on the value; they differ only in how much of the state
-space they have to store.
 
 Sim also **cannot be drawn**. Ramsey's theorem gives R(3,3) = 6: every
 2-coloring of K&#8326; contains a monochromatic triangle, so the board can never
@@ -43,11 +32,11 @@ fill with nobody having lost. `make test` checks this by brute force over all
 ## Play it
 
 **In a browser** — [johntwiprahamdebbarma.github.io/Sim-Game](https://johntwiprahamdebbarma.github.io/Sim-Game/)
-(served from `docs/`; enable GitHub Pages on the `docs` folder of `main`).
-The page ports the same negamax to JavaScript, solves the game on load, and
-marks every line you could play with whether it still loses. The port is exact:
-it reaches the same 112,096 positions and returns the same opening move as the
-C engine.
+(served from `docs/` by GitHub Pages).
+The page is `sim.c` ported line for line to JavaScript, with the same function
+names. It solves the game on load and marks every line you could play with
+whether it still loses. The port is exact: it reaches the same 112,096
+positions and returns the same opening move as the C engine.
 
 **In a terminal**
 
@@ -75,35 +64,19 @@ Here `1-2` is red and edge `4` — the line joining dots 1 and 6 — is still fr
 
 Negamax over the full game tree with a transposition table.
 
-- **Representation.** A position is two 15-bit masks, one per color, so a
-  triangle test is a mask-and-compare.
-- **Terminal test.** A move loses if it closes a triangle in the mover's color.
-  Only the four triangles *through the edge just played* can have been closed
-  by it, so a move costs four tests rather than twenty. There is no draw case:
-  by R(3,3) = 6, coloring the last edge always closes one.
-- **Memo key.** The two masks alone, without whose turn it is. That is sound
+- **Position encoding.** Each of the 15 edges is one base-3 digit (empty, red,
+  blue), so a position is an integer below 3¹⁵ and the table is a flat 13.7 MB
+  array indexed directly by it. No hashing, no collisions.
+- **Memo key.** The board alone, without whose turn it is. That is sound
   because Red moves first and play strictly alternates, so the side to move
-  follows from how many edges each player has taken. The invariant is enforced
-  by a debug-only assertion.
-- **Position index.** Each edge is one base-3 digit, so a position is an
-  integer below 3¹⁵, read out of a precomputed table in two lookups rather
-  than a fifteen-step loop.
+  follows from the number of colored edges. The invariant is enforced by a
+  debug-only assertion.
+- **Terminal test.** A move loses if it closes a triangle in the mover's color.
+  There is no draw case: by R(3,3) = 6, coloring the last edge always closes
+  one.
 - **Triangles.** The twenty triples are derived from the six vertices at
   startup rather than written out, so the table cannot drift from the edge
   numbering. A test checks it against the hand-written table it replaced.
-
-### Symmetry reduction
-
-Relabelling the six dots does not change the game, so all 720 vertex
-permutations of a position share its value. Building with `-DSIM_SYMMETRY=1`
-reduces every position to the least member of its orbit before consulting the
-table, and maps the stored move back into the position's own labelling on the
-way out.
-
-That collapses the reachable set from 112,096 positions to **3,112** — a factor
-of 36 — which in turn lets a 16K-slot hash table replace the 13.7 MB direct
-array. It is not free: scanning the group at every node costs about 1.8x in
-search time. The reduction is in states and memory, not in wall clock.
 
 The whole engine is `sim.c` and does no I/O; `main.c` is the front end.
 
@@ -115,14 +88,13 @@ Solving from the empty board, `-O2`, Apple M-series:
 | --- | ---: | ---: | ---: |
 | first working version | 1,918,464 | 41.1 MB | 0.34 s |
 | correct terminal score | 216,673 | 41.1 MB | 0.031 s |
-| negamax, table sized 3¹⁵ not 3¹⁶ | 112,096 | 13.7 MB | 0.023 s |
-| bitboards, 4 triangle tests per move | 112,096 | 13.8 MB | 0.0042 s |
-| symmetry-reduced, hashed | **3,112** | **0.81 MB** | 0.0078 s |
+| negamax, table sized 3¹⁵ not 3¹⁶ | **112,096** | **13.7 MB** | **0.023 s** |
 
-Overall that is 616x fewer positions and 51x less memory than the version this
-project started from, and the first row was answering the wrong question.
+Overall that is 17x fewer positions, a third of the memory and 15x the speed of
+the version this project started from, and the first row was answering the
+wrong question.
 
-`make bench` reproduces the last two rows.
+`make bench` reproduces the last row.
 
 ## Tests
 
@@ -140,16 +112,19 @@ that it runs:
 | --- | --- |
 | `edge_index` | the vertex-pair-to-edge map is a bijection onto 0..14 |
 | `triangles` | the generated table matches the hand-written one exactly |
+| `has_lost` | each of the 20 triangles is detected on its own, and two edges never are |
 | `ramsey` | none of the 2¹⁵ full colorings avoids a mono triangle |
 | `opening` | the empty board evaluates to a second-player win |
 | `last edge` | in all 180 undecided 14-edge positions, the last move loses |
 | `legal moves` | the engine never returns an occupied edge |
 | `memo` | a memoized answer matches a search from a cleared table |
-| `unbeatable` | the engine loses none of 2000 games as second player |
+| `unbeatable` | as second player the engine wins all 647,915 games, against every possible Red strategy |
+| `claims` | as Red, every win or loss the engine claims holds up against every defense |
 
 `make cli` feeds the front end out-of-range, negative, non-numeric, oversized
 and truncated input under a watchdog. Every case must exit cleanly — no crash,
-no hang, no sanitizer report.
+no hang, no sanitizer report. A number too big for an `int` must be refused, not
+wrapped onto a real edge.
 
 ## What the search taught me
 

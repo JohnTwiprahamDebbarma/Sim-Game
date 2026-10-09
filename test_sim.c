@@ -5,7 +5,6 @@
 #include "sim.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 
 static int checks, failures;
 
@@ -69,6 +68,37 @@ static void test_triangle_table_matches_reference(void)
               t, triangle[t][0], triangle[t][1], triangle[t][2]);
     }
     report("generated triangles match the hand-written table");
+}
+
+/*
+ * has_lost() against the definition of a triangle, built here from vertex
+ * triples rather than read from the engine's own table.  Each of the twenty
+ * triangles colored on its own is a loss; remove any one of its edges and it
+ * is not.  The Ramsey test below cannot stand in for this: every coloring of
+ * K6 has at least two monochromatic triangles, so a has_lost() that missed one
+ * of them would still pass it.
+ */
+static void test_has_lost_sees_every_triangle(void)
+{
+    for (int a = 0; a < NVERT; ++a)
+        for (int b = a + 1; b < NVERT; ++b)
+            for (int c = b + 1; c < NVERT; ++c) {
+                int edge[3] = { edge_index(a, b), edge_index(a, c), edge_index(b, c) };
+                board_t board;
+
+                init_board(board);
+                for (int i = 0; i < 3; ++i)
+                    board[edge[i]] = RED;
+                CHECK(has_lost(board, RED), "triangle %d%d%d not detected", a + 1, b + 1, c + 1);
+                CHECK(!has_lost(board, BLUE), "triangle %d%d%d blamed on Blue", a + 1, b + 1, c + 1);
+                for (int i = 0; i < 3; ++i) {
+                    board[edge[i]] = EMPTY;
+                    CHECK(!has_lost(board, RED), "two edges of %d%d%d taken for a triangle",
+                          a + 1, b + 1, c + 1);
+                    board[edge[i]] = RED;
+                }
+            }
+    report("has_lost sees each triangle, and only whole ones");
 }
 
 /*
@@ -147,7 +177,6 @@ static void test_best_move_returns_a_legal_edge(void)
     board_t b;
 
     init_board(b);
-    srand(7);
     for (int trial = 0; trial < 200; ++trial) {
         player_t cur = RED;
         init_board(b);
@@ -180,38 +209,89 @@ static void test_memo_hit_agrees_with_fresh_search(void)
 }
 
 /*
+ * Play the engine against every possible opponent: at each of the opponent's
+ * turns, try every legal move.  Returns 1 if the engine wins every game that
+ * follows.  On the way, audit what the engine claims about each position it
+ * moves from -- a claimed win must hold against every reply, and a claimed
+ * loss must have some reply that beats it.
+ */
+static long games_played, games_lost, false_claims;
+
+static int wins_every_game(board_t b, player_t to_move, player_t engine)
+{
+    int all = 1;
+
+    if (to_move == engine) {
+        move_t m = best_move(b, engine);
+
+        b[m.line] = engine;
+        if (has_lost(b, engine)) {
+            ++games_played;
+            ++games_lost;
+            all = 0;
+        } else if (is_full(b)) {
+            ++games_played;            /* a draw, which Sim does not allow    */
+            all = 0;
+        } else {
+            all = wins_every_game(b, other_player(engine), engine);
+        }
+        b[m.line] = EMPTY;
+        if ((m.score == 1) != all)
+            ++false_claims;
+        return all;
+    }
+
+    for (int e = 0; e < BOARD_SIZE; ++e) {
+        if (b[e] != EMPTY)
+            continue;
+        b[e] = to_move;
+        if (has_lost(b, to_move))
+            ++games_played;
+        else if (is_full(b) || !wins_every_game(b, engine, engine))
+            all = 0;
+        b[e] = EMPTY;
+    }
+    return all;
+}
+
+static void play_every_game(player_t engine, int *engine_won_all)
+{
+    board_t b;
+
+    games_played = games_lost = false_claims = 0;
+    init_board(b);
+    *engine_won_all = wins_every_game(b, RED, engine);
+}
+
+/*
  * Sim is a second-player win, so a correct engine playing Blue must never lose
- * -- against any opponent, including a random one.
+ * -- not against a sample of opponents, but against every one there is.
  */
 static void test_engine_never_loses_as_second_player(void)
 {
-    int games = 2000, losses = 0, draws = 0;
+    int won_all;
 
-    srand(12345);
-    for (int g = 0; g < games; ++g) {
-        board_t b;
-        player_t cur = RED;
-
-        init_board(b);
-        for (;;) {
-            if (cur == RED) {
-                int empty[BOARD_SIZE], n = 0;
-                for (int e = 0; e < BOARD_SIZE; ++e)
-                    if (b[e] == EMPTY) empty[n++] = e;
-                if (n == 0) { ++draws; break; }
-                b[empty[rand() % n]] = RED;
-            } else {
-                b[best_move(b, BLUE).line] = BLUE;
-            }
-            if (has_lost(b, cur)) { if (cur == BLUE) ++losses; break; }
-            if (is_full(b)) { ++draws; break; }
-            cur = other_player(cur);
-        }
-    }
-    CHECK(losses == 0, "engine lost %d of %d games as second player", losses, games);
-    CHECK(draws == 0, "%d games were drawn, which Sim does not allow", draws);
-    printf("      (%d games played)\n", games);
+    play_every_game(BLUE, &won_all);
+    CHECK(won_all && games_lost == 0, "engine lost %ld games as second player", games_lost);
+    CHECK(false_claims == 0, "%ld of the engine's claims did not hold up", false_claims);
+    printf("      (%ld games: every possible Red strategy)\n", games_played);
     report("engine is unbeatable as second player");
+}
+
+/*
+ * As Red the engine is lost against perfect play, so some games must go
+ * against it -- but whenever it claims a win it must deliver one, and whenever
+ * it claims a loss there must be a defense that beats it.
+ */
+static void test_engine_claims_hold_as_first_player(void)
+{
+    int won_all;
+
+    play_every_game(RED, &won_all);
+    CHECK(!won_all, "engine won every game as Red, but Red is lost");
+    CHECK(false_claims == 0, "%ld of the engine's claims did not hold up", false_claims);
+    printf("      (%ld games: every possible Blue strategy)\n", games_played);
+    report("every claim the engine makes holds up as Red");
 }
 
 /* ------------------------------------------------------------------- main */
@@ -221,16 +301,18 @@ int main(void)
     struct { const char *name; void (*fn)(void); } tests[] = {
         { "edge_index",        test_edge_index_is_a_bijection },
         { "triangles",         test_triangle_table_matches_reference },
+        { "has_lost",          test_has_lost_sees_every_triangle },
         { "ramsey",            test_no_coloring_avoids_a_monochromatic_triangle },
         { "opening",           test_opening_is_a_second_player_win },
         { "last edge",         test_filling_the_last_edge_loses },
         { "legal moves",       test_best_move_returns_a_legal_edge },
         { "memo",              test_memo_hit_agrees_with_fresh_search },
         { "unbeatable",        test_engine_never_loses_as_second_player },
+        { "claims",            test_engine_claims_hold_as_first_player },
     };
     int total_failures = 0, total_checks = 0;
 
-    sim_init();
+    init_triangles();
     printf("sim engine tests\n\n");
     for (size_t i = 0; i < sizeof tests / sizeof tests[0]; ++i) {
         checks = failures = 0;

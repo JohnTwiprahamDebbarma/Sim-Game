@@ -43,6 +43,32 @@ check() {
     fi
 }
 
+# Valid input must be taken: the game gets as far as `pattern`.
+accepts() {
+    desc=$1
+    pattern=$2
+    shift 2
+    if printf '%s\n' "$@" | "$BIN" 2>/dev/null | grep -q "$pattern"; then
+        echo "  ok    $desc"
+    else
+        echo "  FAIL  $desc -- not accepted"
+        STATUS=1
+    fi
+}
+
+# Invalid input must be refused outright -- never read as some other choice.
+refuses() {
+    desc=$1
+    pattern=$2
+    shift 2
+    if printf '%s\n' "$@" | "$BIN" 2>/dev/null | grep -q "$pattern"; then
+        echo "  FAIL  $desc -- read as a valid choice"
+        STATUS=1
+    else
+        echo "  ok    $desc"
+    fi
+}
+
 echo "cli tests ($BIN)"
 check "out-of-range edge"        1 99 0
 check "negative edge"            1 -3 0
@@ -55,6 +81,26 @@ check "invalid mode"             9
 check "non-numeric mode"         hello
 check "occupied edge"            1 0 0 1
 check "repeated bad input"       1 x y z 0
+
+# A number too big for an int used to wrap onto a real edge: 4294967301 is
+# 2^32 + 5, and scanf("%d") read it as 5.
+MOVED="Computer's Move"
+accepts "a plain move"             "$MOVED" 1 5
+accepts "a move with spaces"       "$MOVED" 1 "  5  "
+accepts "a move with CRLF"         "$MOVED" 1 "$(printf '5\r')"
+refuses "2^32 as a move"           "$MOVED" 1 4294967296
+refuses "2^32 + 5 as a move"       "$MOVED" 1 4294967301
+refuses "-(2^32 - 5) as a move"    "$MOVED" 1 -4294967291
+refuses "trailing junk"            "$MOVED" 1 5abc
+refuses "two numbers on a line"    "$MOVED" 1 "5 7"
+refuses "hex"                      "$MOVED" 1 0x5
+
+PROMPT="Enter your move"
+accepts "side 1"                   "$PROMPT" 1
+accepts "side 2"                   "$PROMPT" 2
+refuses "2^32 + 1 as the side"     "$PROMPT" 4294967297
+refuses "2^32 + 2 as the side"     "$PROMPT" 4294967298
+refuses "trailing junk as the side" "$PROMPT" 1abc
 
 rm -f "$ERR" "$ERR.rc"
 [ "$STATUS" -eq 0 ] && echo "cli tests: ok"

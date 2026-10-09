@@ -4,7 +4,12 @@
  */
 #include "sim.h"
 
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /*
  * The board as an upper-triangular matrix over the six vertices.  A cell holds
@@ -34,6 +39,48 @@ static void print_board(board_t board)
 }
 
 /*
+ * Read one line and parse it as a whole number.  Returns 1 and sets *out when
+ * the line is exactly one integer that fits in an int, 0 when it is anything
+ * else, and EOF at end of input.
+ *
+ * Not scanf("%d"): a number too large for an int is undefined behavior there,
+ * and in practice it wraps -- 4294967301 would be read as 5, a real edge.
+ * strtol reports overflow instead.
+ */
+static int read_number(int *out)
+{
+    char text[32];
+    size_t len = 0;
+    int ch, too_long = 0;
+    char *end;
+    long value;
+
+    while ((ch = getchar()) != EOF && ch != '\n') {
+        if (len + 1 < sizeof text)
+            text[len++] = (char)ch;
+        else
+            too_long = 1;
+    }
+    if (ch == EOF && len == 0 && !too_long)
+        return EOF;
+    text[len] = '\0';
+    if (too_long || memchr(text, '\0', len) != NULL)
+        return 0;
+
+    errno = 0;
+    value = strtol(text, &end, 10);
+    if (end == text || errno == ERANGE || value < INT_MIN || value > INT_MAX)
+        return 0;
+    while (isspace((unsigned char)*end))
+        ++end;
+    if (*end != '\0')
+        return 0;                     /* trailing characters, as in "5abc"   */
+
+    *out = (int)value;
+    return 1;
+}
+
+/*
  * Read one move.  Returns false at end of input.  A rejected move sets *line
  * to -1, leaving the caller to prompt again.
  */
@@ -42,17 +89,14 @@ static bool read_move(board_t board, int *line)
     int move, rc;
 
     printf("Enter your move: ");
-    rc = scanf("%d", &move);
+    rc = read_number(&move);
     if (rc == EOF) {
         printf("\nInput ended; exiting.\n");
         return false;
     }
 
     *line = -1;
-    if (rc != 1) {                    /* not a number: discard the token     */
-        int ch;
-        while ((ch = getchar()) != '\n' && ch != EOF)
-            { }
+    if (rc == 0) {
         printf("Invalid Move: please enter a number.\n");
     } else if (move < 0 || move >= BOARD_SIZE) {
         printf("Invalid Move: choose a line from 0 to %d.\n", BOARD_SIZE - 1);
@@ -70,13 +114,13 @@ int main(void)
     player_t human, current = RED;
     int order, line;
 
-    sim_init();
+    init_triangles();
 
     printf("Welcome to Game of Sim\n\n"
            "Color edges of the complete graph on six dots.  Complete a triangle\n"
            "in your own color and you lose.  Red moves first.\n\n"
            "Enter 1 if you are the first (Red) player and 2 otherwise (Blue): ");
-    if (scanf("%d", &order) != 1) {
+    if (read_number(&order) != 1) {
         printf("\nInput ended or was not a number; exiting.\n");
         return 1;
     }

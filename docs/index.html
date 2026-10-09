@@ -355,10 +355,10 @@ figcaption.verdict { color: var(--ink); }
       </div>
 
       <div class="colophon">
-        <p>The engine searches the whole game once, then answers instantly. It is the
-        same negamax written in C in the
+        <p>The engine searches the whole game once, then answers instantly. It is
+        <code>sim.c</code> from the
         <a href="https://github.com/JohnTwiprahamDebbarma/Sim-Game">repository</a>,
-        ported here.</p>
+        ported line for line.</p>
         <p>No draw is possible: Ramsey's theorem gives R(3,3)&nbsp;=&nbsp;6, so any
         two-colouring of K<sub>6</sub> contains a monochromatic triangle.</p>
       </div>
@@ -372,102 +372,152 @@ figcaption.verdict { color: var(--ink); }
   "use strict";
 
   /* ------------------------------------------------------------ engine
-     A position is two 15-bit masks. Edges are numbered lexicographically
-     by their endpoints, matching sim.c exactly. */
+     A line-for-line port of sim.c, keeping its names. A board is an array
+     of 15 characters, one per edge: "." empty, "R" red, "B" blue. Edges are
+     numbered lexicographically by their endpoints:
 
-  var NV = 6, NE = 15;
-  var ends = [], idx = {};
-  for (var u = 0, e = 0; u < NV; u++)
-    for (var v = u + 1; v < NV; v++, e++) { ends.push([u, v]); idx[u + "," + v] = e; }
+        0:12   1:13   2:14   3:15   4:16   5:23   6:24   7:25
+        8:26   9:34  10:35  11:36  12:45  13:46  14:56          */
 
-  function edgeOf(a, b) { return idx[Math.min(a, b) + "," + Math.max(a, b)]; }
+  var NVERT = 6, BOARD_SIZE = 15, NTRIANGLE = 20;
+  var EMPTY = ".", RED = "R", BLUE = "B";
 
-  var triVerts = [], triMask = [], edgeTri = [];
-  for (var i = 0; i < NE; i++) edgeTri.push([]);
-  for (var a = 0; a < NV; a++)
-    for (var b = a + 1; b < NV; b++)
-      for (var c = b + 1; c < NV; c++) {
-        var t = [edgeOf(a, b), edgeOf(a, c), edgeOf(b, c)];
-        var m = (1 << t[0]) | (1 << t[1]) | (1 << t[2]);
-        triVerts.push([a, b, c]);
-        triMask.push(m);
-        t.forEach(function (x) { edgeTri[x].push(m); });
-      }
-
-  function closes(mine, edge) {
-    var list = edgeTri[edge];
-    for (var k = 0; k < list.length; k++)
-      if ((mine & list[k]) === list[k]) return true;
-    return false;
+  function init_board() {
+    var board = [];
+    for (var line = 0; line < BOARD_SIZE; line++) board.push(EMPTY);
+    return board;
   }
 
-  function monoTriangle(mask) {
-    for (var k = 0; k < triMask.length; k++)
-      if ((mask & triMask[k]) === triMask[k]) return k;
+  function is_full(board) {
+    for (var line = 0; line < BOARD_SIZE; line++)
+      if (board[line] === EMPTY) return false;
+    return true;
+  }
+
+  function other_player(player) { return player === RED ? BLUE : RED; }
+
+  /* Index of the edge joining vertices u and v. */
+  function edge_index(u, v) {
+    var lo = Math.min(u, v), hi = Math.max(u, v);
+    return (NVERT - 1) * lo - lo * (lo - 1) / 2 + (hi - lo - 1);
+  }
+
+  /* The three edges of each triangle, derived from the vertex triples. */
+  var triangle = [], triangle_vertices = [];
+  for (var a = 0; a < NVERT; a++)
+    for (var b = a + 1; b < NVERT; b++)
+      for (var c = b + 1; c < NVERT; c++) {
+        triangle.push([edge_index(a, b), edge_index(a, c), edge_index(b, c)]);
+        triangle_vertices.push([a, b, c]);
+      }
+
+  /* The first triangle entirely in the player's color, or -1. */
+  function lost_triangle(board, player) {
+    for (var t = 0; t < NTRIANGLE; t++)
+      if (board[triangle[t][0]] === player &&
+          board[triangle[t][1]] === player &&
+          board[triangle[t][2]] === player)
+        return t;
     return -1;
   }
 
-  /* Negamax with a transposition table. Value is for the side to move:
-     +1 win, -1 loss. Draws do not exist, so those are the only two. */
-  var memo = new Map(), nodes = 0;
+  function has_lost(board, player) { return lost_triangle(board, player) >= 0; }
 
-  function solve(red, blue, redToMove) {
-    var key = red * 32768 + blue;
-    var hit = memo.get(key);
-    if (hit !== undefined) return hit;
+  /* One byte per position, indexed by the position as a base-3 number:
+     3^15 entries, as in sim.c. Zero means not computed yet. */
+  var POSITIONS = 14348907;
+  var computed_moves = new Uint8Array(POSITIONS);
+  var memo_entries = 0;
 
-    nodes++;
-    var occ = red | blue, bestLine = -1, bestScore = -1;
-
-    for (var q = 0; q < NE; q++) {
-      if (occ & (1 << q)) continue;
-      var mine = (redToMove ? red : blue) | (1 << q), score;
-      if (closes(mine, q)) {
-        score = -1;
-      } else {
-        var nr = redToMove ? mine : red, nb = redToMove ? blue : mine;
-        score = -(((solve(nr, nb, !redToMove) >> 4) - 1));
-      }
-      if (bestLine < 0 || score > bestScore) {
-        bestLine = q; bestScore = score;
-        if (score === 1) break;
-      }
-    }
-    var enc = bestLine | ((bestScore + 1) << 4);
-    memo.set(key, enc);
-    return enc;
+  function ord(board) {
+    var i = 0;
+    for (var line = BOARD_SIZE - 1; line >= 0; line--)
+      i = i * 3 + (board[line] === RED ? 1 : board[line] === BLUE ? 2 : 0);
+    return i;
   }
 
-  function valueOf(red, blue, redToMove) { return (solve(red, blue, redToMove) >> 4) - 1; }
-  function lineOf(red, blue, redToMove)  { return solve(red, blue, redToMove) & 15; }
+  function encode_move(m) { return m.line | (1 << (5 + m.score)); }
+
+  function decode_move(b) {
+    return { line: b & 0x0f, score: (b & 0x10) ? -1 : (b & 0x20) ? 0 : 1 };
+  }
+
+  /* Best move for the player to move, with its score: +1 win, -1 loss.
+     Negamax: a position is worth the negation of the opponent's best reply.
+     Memoized by board alone, which is sound because Red moves first and play
+     alternates, so the board itself decides whose turn it is. */
+  function best_move(board, player) {
+    var o = ord(board);
+    if (computed_moves[o]) return decode_move(computed_moves[o]);
+
+    var best = { line: -1, score: -1 };
+    for (var line = 0; line < BOARD_SIZE; line++) {
+      var score;
+      if (board[line] !== EMPTY) continue;
+
+      board[line] = player;
+      if (has_lost(board, player))
+        score = -1;               /* this edge closes the mover's triangle */
+      else if (is_full(board))
+        score = -1;               /* unreachable: R(3,3) = 6 */
+      else
+        score = -best_move(board, other_player(player)).score;
+      board[line] = EMPTY;
+
+      if (best.line < 0 || score > best.score) {
+        best = { line: line, score: score };
+        if (score === 1) break;   /* cannot do better than winning */
+      }
+    }
+    computed_moves[o] = encode_move(best);
+    memo_entries++;
+    return best;
+  }
+
+  /* Whether playing this edge loses, with best play from both sides. */
+  function move_loses(board, line, player) {
+    board[line] = player;
+    var lost = has_lost(board, player) ||
+               best_move(board, other_player(player)).score === 1;
+    board[line] = EMPTY;
+    return lost;
+  }
 
   /* -------------------------------------------------------------- state */
 
-  var RED = 0, BLUE = 1;
   var st = {
-    red: 0, blue: 0,
+    board: init_board(),
     turn: RED,
     human: RED,
     history: [],
     over: false,
-    loser: -1,
+    loser: null,
     losingTri: -1,
     solved: false,
     thinking: false
   };
 
+  /* Solve the whole game once, so every later answer comes from the table. */
+  function solveGame() {
+    if (!st.solved) { best_move(init_board(), RED); st.solved = true; }
+  }
+
   /* ------------------------------------------------------------ geometry */
 
   var CX = 220, CY = 208, R = 150, LR = 182;
   var pt = [];
-  for (var n = 0; n < NV; n++) {
+  for (var n = 0; n < NVERT; n++) {
     var ang = (-90 + n * 60) * Math.PI / 180;
     pt.push({ x: CX + R * Math.cos(ang), y: CY + R * Math.sin(ang),
               lx: CX + LR * Math.cos(ang), ly: CY + LR * Math.sin(ang) });
   }
 
+  var edge_ends = [];
+  for (var u = 0; u < NVERT; u++)
+    for (var v = u + 1; v < NVERT; v++) edge_ends[edge_index(u, v)] = [u, v];
+
   var SVGNS = "http://www.w3.org/2000/svg";
-  var board = document.getElementById("board");
+  var svgBoard = document.getElementById("board");
   var washEl, edgeEls = [], hitEls = [];
 
   function svg(tag, attrs) {
@@ -478,25 +528,25 @@ figcaption.verdict { color: var(--ink); }
 
   function buildBoard() {
     washEl = svg("polygon", { class: "wash", points: "", fill: "none" });
-    board.appendChild(washEl);
+    svgBoard.appendChild(washEl);
 
-    for (var q = 0; q < NE; q++) {
-      var A = pt[ends[q][0]], B = pt[ends[q][1]];
+    for (var q = 0; q < BOARD_SIZE; q++) {
+      var A = pt[edge_ends[q][0]], B = pt[edge_ends[q][1]];
       var line = svg("line", { class: "edge free", x1: A.x, y1: A.y, x2: B.x, y2: B.y });
       var hit = svg("line", { class: "hit", x1: A.x, y1: A.y, x2: B.x, y2: B.y,
                               tabindex: "0", role: "button" });
       hit.dataset.edge = q;
-      board.appendChild(hit);
-      board.appendChild(line);
+      svgBoard.appendChild(hit);
+      svgBoard.appendChild(line);
       edgeEls.push(line);
       hitEls.push(hit);
     }
 
-    for (var n = 0; n < NV; n++) {
-      board.appendChild(svg("circle", { class: "vertex-ring", cx: pt[n].x, cy: pt[n].y, r: 7 }));
+    for (var n = 0; n < NVERT; n++) {
+      svgBoard.appendChild(svg("circle", { class: "vertex-ring", cx: pt[n].x, cy: pt[n].y, r: 7 }));
       var lab = svg("text", { class: "vlabel", x: pt[n].lx, y: pt[n].ly });
       lab.textContent = String(n + 1);
-      board.appendChild(lab);
+      svgBoard.appendChild(lab);
     }
   }
 
@@ -511,51 +561,43 @@ figcaption.verdict { color: var(--ink); }
   var elAnalysis = document.getElementById("analysis");
   var elLegend  = document.getElementById("legend");
 
-  function count(mask) { var c = 0; while (mask) { mask &= mask - 1; c++; } return c; }
-  function nameOf(side) { return side === RED ? "Red" : "Blue"; }
+  function count(board, player) {
+    var k = 0;
+    for (var line = 0; line < BOARD_SIZE; line++) if (board[line] === player) k++;
+    return k;
+  }
+
+  function nameOf(player) { return player === RED ? "Red" : "Blue"; }
+  function colorOf(player) { return player === RED ? "var(--red)" : "var(--blue)"; }
 
   function render() {
-    var occ = st.red | st.blue;
+    var b = st.board;
     var showMarks = elAnalysis.checked && !st.over && !st.thinking && st.solved
                     && st.turn === st.human;
 
-    for (var q = 0; q < NE; q++) {
-      var cls = "edge ";
-      if (st.red & (1 << q))       cls += "red";
-      else if (st.blue & (1 << q)) cls += "blue";
-      else                         cls += "free";
+    for (var q = 0; q < BOARD_SIZE; q++) {
+      var cls = "edge " + (b[q] === RED ? "red" : b[q] === BLUE ? "blue" : "free");
 
-      if (showMarks && !(occ & (1 << q))) {
-        var mine = (st.turn === RED ? st.red : st.blue) | (1 << q);
-        var lost;
-        if (closes(mine, q)) {
-          lost = true;
-        } else {
-          var nr = st.turn === RED ? mine : st.red;
-          var nb = st.turn === RED ? st.blue : mine;
-          lost = valueOf(nr, nb, st.turn !== RED) === 1;
-        }
+      edgeEls[q].style.stroke = "";
+      if (showMarks && b[q] === EMPTY) {
+        var lost = move_loses(b, q, st.turn);
         cls += lost ? " doomed" : " saving";
-        if (!lost) edgeEls[q].style.stroke = st.turn === RED ? "var(--red)" : "var(--blue)";
-        else edgeEls[q].style.stroke = "";
-      } else {
-        edgeEls[q].style.stroke = "";
+        if (!lost) edgeEls[q].style.stroke = colorOf(st.turn);
       }
-
       edgeEls[q].setAttribute("class", cls);
 
-      var taken = !!(occ & (1 << q));
+      var taken = b[q] !== EMPTY;
       var playable = !taken && !st.over && !st.thinking && st.turn === st.human;
       hitEls[q].setAttribute("class", playable ? "hit" : "hit dead");
       hitEls[q].setAttribute("aria-disabled", playable ? "false" : "true");
       hitEls[q].setAttribute("aria-label",
-        "Line " + (ends[q][0] + 1) + "–" + (ends[q][1] + 1) + ", " +
-        (taken ? ((st.red & (1 << q)) ? "red" : "blue") : "free"));
+        "Line " + (edge_ends[q][0] + 1) + "–" + (edge_ends[q][1] + 1) + ", " +
+        (taken ? (b[q] === RED ? "red" : "blue") : "free"));
       hitEls[q].setAttribute("tabindex", playable ? "0" : "-1");
     }
 
     if (st.over && st.losingTri >= 0) {
-      var vs = triVerts[st.losingTri];
+      var vs = triangle_vertices[st.losingTri];
       washEl.setAttribute("points", vs.map(function (v) { return pt[v].x + "," + pt[v].y; }).join(" "));
       washEl.setAttribute("fill", st.loser === RED ? "var(--red-wash)" : "var(--blue-wash)");
     } else {
@@ -563,8 +605,8 @@ figcaption.verdict { color: var(--ink); }
       washEl.setAttribute("fill", "none");
     }
 
-    elLines.innerHTML = '<span class="swatch red"></span>' + count(st.red) +
-                        ' &nbsp; <span class="swatch blue"></span>' + count(st.blue);
+    elLines.innerHTML = '<span class="swatch red"></span>' + count(b, RED) +
+                        ' &nbsp; <span class="swatch blue"></span>' + count(b, BLUE);
 
     if (st.over) {
       elToMove.textContent = "—";
@@ -575,7 +617,7 @@ figcaption.verdict { color: var(--ink); }
       elCaption.innerHTML =
         '<span class="fig">Fig. 1</span> — ' + nameOf(st.loser) +
         ' closes the triangle ' +
-        triVerts[st.losingTri].map(function (v) { return v + 1; }).join("–") +
+        triangle_vertices[st.losingTri].map(function (v) { return v + 1; }).join("–") +
         '. ' + (st.loser === st.human
                   ? "You lose."
                   : "You win — but the engine only loses from a lost position.");
@@ -591,36 +633,28 @@ figcaption.verdict { color: var(--ink); }
         elVerdict.textContent = "—";
         elVerdict.className = "";
       } else {
-        var v = valueOf(st.red, st.blue, st.turn === RED);
-        elVerdict.textContent = v === 1
-          ? nameOf(st.turn) + " wins with perfect play"
-          : nameOf(st.turn) + " loses with perfect play";
-        elVerdict.className = v === 1
-          ? (st.turn === RED ? "red" : "blue")
-          : "";
+        var wins = best_move(b, st.turn).score === 1;
+        elVerdict.textContent = nameOf(st.turn) + (wins ? " wins" : " loses") + " with perfect play";
+        elVerdict.className = wins ? (st.turn === RED ? "red" : "blue") : "";
       }
     }
 
     if (st.thinking) { elToMove.textContent = "engine searching…"; elToMove.className = ""; }
 
-    elSolved.textContent = st.solved
-      ? memo.size.toLocaleString() + " positions"
-      : "not yet";
-
+    elSolved.textContent = st.solved ? memo_entries.toLocaleString() + " positions" : "not yet";
     elUndo.disabled = st.thinking || st.history.length === 0;
     elLegend.className = elAnalysis.checked ? "legend on" : "legend";
   }
 
   /* --------------------------------------------------------------- play */
 
-  function place(edge, side) {
-    st.history.push({ red: st.red, blue: st.blue, turn: st.turn });
-    if (side === RED) st.red |= (1 << edge); else st.blue |= (1 << edge);
+  function place(line, player) {
+    st.history.push({ board: st.board.slice(), turn: st.turn });
+    st.board[line] = player;
 
-    var mine = side === RED ? st.red : st.blue;
-    var t = monoTriangle(mine);
-    if (t >= 0) { st.over = true; st.loser = side; st.losingTri = t; }
-    else st.turn = side === RED ? BLUE : RED;
+    var t = lost_triangle(st.board, player);
+    if (t >= 0) { st.over = true; st.loser = player; st.losingTri = t; }
+    else st.turn = other_player(player);
   }
 
   function engineTurn() {
@@ -628,24 +662,24 @@ figcaption.verdict { color: var(--ink); }
     st.thinking = true;
     render();
     setTimeout(function () {
-      if (!st.solved) { solve(0, 0, true); st.solved = true; }
-      place(lineOf(st.red, st.blue, st.turn === RED), st.turn);
+      solveGame();
+      place(best_move(st.board, st.turn).line, st.turn);
       st.thinking = false;
       render();
     }, 30);
   }
 
-  function humanPlay(edge) {
+  function humanPlay(line) {
     if (st.over || st.thinking || st.turn !== st.human) return;
-    if ((st.red | st.blue) & (1 << edge)) return;
-    place(edge, st.human);
+    if (st.board[line] !== EMPTY) return;
+    place(line, st.human);
     render();
     engineTurn();
   }
 
   function newGame(human) {
-    st.red = 0; st.blue = 0; st.turn = RED; st.human = human;
-    st.history = []; st.over = false; st.loser = -1; st.losingTri = -1;
+    st.board = init_board(); st.turn = RED; st.human = human;
+    st.history = []; st.over = false; st.loser = null; st.losingTri = -1;
     st.thinking = false;
     document.getElementById("pickRed").setAttribute("aria-pressed", human === RED);
     document.getElementById("pickBlue").setAttribute("aria-pressed", human === BLUE);
@@ -658,9 +692,9 @@ figcaption.verdict { color: var(--ink); }
     /* step back to the last position where it was the player's turn */
     do {
       var p = st.history.pop();
-      st.red = p.red; st.blue = p.blue; st.turn = p.turn;
+      st.board = p.board; st.turn = p.turn;
     } while (st.history.length && st.turn !== st.human);
-    st.over = false; st.loser = -1; st.losingTri = -1;
+    st.over = false; st.loser = null; st.losingTri = -1;
     render();
     if (st.turn !== st.human) engineTurn();   /* undid past the engine's opening */
   }
@@ -670,19 +704,19 @@ figcaption.verdict { color: var(--ink); }
   buildBoard();
 
   hitEls.forEach(function (hit) {
-    var edge = +hit.dataset.edge;
-    hit.addEventListener("click", function () { humanPlay(edge); });
+    var line = +hit.dataset.edge;
+    hit.addEventListener("click", function () { humanPlay(line); });
     hit.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); humanPlay(edge); }
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); humanPlay(line); }
     });
     hit.addEventListener("mouseenter", function () {
       if (st.over || st.thinking || st.turn !== st.human) return;
-      if ((st.red | st.blue) & (1 << edge)) return;
-      edgeEls[edge].classList.add("hover");
-      edgeEls[edge].style.stroke = st.human === RED ? "var(--red)" : "var(--blue)";
+      if (st.board[line] !== EMPTY) return;
+      edgeEls[line].classList.add("hover");
+      edgeEls[line].style.stroke = colorOf(st.human);
     });
     hit.addEventListener("mouseleave", function () {
-      edgeEls[edge].classList.remove("hover");
+      edgeEls[line].classList.remove("hover");
       render();
     });
   });
@@ -694,16 +728,14 @@ figcaption.verdict { color: var(--ink); }
   elAnalysis.addEventListener("change", function () {
     if (elAnalysis.checked && !st.solved) {
       st.thinking = true; render();
-      setTimeout(function () { solve(0, 0, true); st.solved = true; st.thinking = false; render(); }, 30);
+      setTimeout(function () { solveGame(); st.thinking = false; render(); }, 30);
     } else render();
   });
 
   render();
 
   /* Solve in the background so the first engine reply is instant. */
-  setTimeout(function () {
-    if (!st.solved) { solve(0, 0, true); st.solved = true; render(); }
-  }, 120);
+  setTimeout(function () { solveGame(); render(); }, 120);
 })();
 </script>
 </body>
