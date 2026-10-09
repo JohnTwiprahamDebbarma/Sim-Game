@@ -32,11 +32,11 @@ fill with nobody having lost. `make test` checks this by brute force over all
 ## Play it
 
 **In a browser** — [johntwiprahamdebbarma.github.io/Sim-Game](https://johntwiprahamdebbarma.github.io/Sim-Game/)
-(served from `docs/`; enable GitHub Pages on the `docs` folder of `main`).
-The page ports the same negamax to JavaScript, solves the game on load, and
-marks every line you could play with whether it still loses. The port is exact:
-it reaches the same 112,096 positions and returns the same opening move as the
-C engine.
+(served from `docs/` by GitHub Pages).
+The page is `sim.c` ported line for line to JavaScript, with the same function
+names. It solves the game on load and marks every line you could play with
+whether it still loses. The port is exact: it reaches the same 112,096
+positions and returns the same opening move as the C engine.
 
 **In a terminal**
 
