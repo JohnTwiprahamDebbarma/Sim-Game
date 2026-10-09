@@ -121,7 +121,8 @@ that it runs:
 
 `make cli` feeds the front end out-of-range, negative, non-numeric, oversized
 and truncated input under a watchdog. Every case must exit cleanly — no crash,
-no hang, no sanitizer report.
+no hang, no sanitizer report. A number too big for an `int` must be refused, not
+wrapped onto a real edge.
 
 ## What the search taught me
 
