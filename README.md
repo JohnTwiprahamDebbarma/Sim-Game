@@ -112,12 +112,14 @@ that it runs:
 | --- | --- |
 | `edge_index` | the vertex-pair-to-edge map is a bijection onto 0..14 |
 | `triangles` | the generated table matches the hand-written one exactly |
+| `has_lost` | each of the 20 triangles is detected on its own, and two edges never are |
 | `ramsey` | none of the 2¹⁵ full colorings avoids a mono triangle |
 | `opening` | the empty board evaluates to a second-player win |
 | `last edge` | in all 180 undecided 14-edge positions, the last move loses |
 | `legal moves` | the engine never returns an occupied edge |
 | `memo` | a memoized answer matches a search from a cleared table |
-| `unbeatable` | the engine loses none of 2000 games as second player |
+| `unbeatable` | as second player the engine wins all 647,915 games, against every possible Red strategy |
+| `claims` | as Red, every win or loss the engine claims holds up against every defense |
 
 `make cli` feeds the front end out-of-range, negative, non-numeric, oversized
 and truncated input under a watchdog. Every case must exit cleanly — no crash,
