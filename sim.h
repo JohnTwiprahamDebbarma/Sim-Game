@@ -49,12 +49,11 @@ int      edge_index(int u, int v);
 
 /*
  * The three edges of each triangle, derived from the vertex triples by
- * sim_init() rather than written out by hand.
+ * init_triangles() rather than written out by hand.  Call init_triangles()
+ * once before has_lost() or best_move().
  */
 extern int triangle[NTRIANGLE][3];
-
-/* Build the triangle, edge and index tables.  Call once, before anything else. */
-void     sim_init(void);
+void     init_triangles(void);
 
 bool     has_lost(board_t board, player_t player);
 
