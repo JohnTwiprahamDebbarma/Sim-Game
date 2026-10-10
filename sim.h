@@ -36,7 +36,7 @@ typedef char board_t[BOARD_SIZE];
 
 typedef struct {
     int line;
-    int score;                        /* -1 loss, 0 draw, +1 win, for the
+    int score;                        /* -1 is loss, 0 is draw, +1 is win, for the
                                          player to move                      */
 } move_t;
 
