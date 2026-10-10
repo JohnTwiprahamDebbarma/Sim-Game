@@ -82,7 +82,7 @@ The whole engine is `sim.c` and does no I/O; `main.c` is the front end.
 
 ## Performance
 
-Solving from the empty board, `-O2`, Apple M-series:
+Solving from the empty board, `-O2`, Apple Macbook Air M3:
 
 | | positions | memory | time |
 | --- | ---: | ---: | ---: |
@@ -91,8 +91,7 @@ Solving from the empty board, `-O2`, Apple M-series:
 | negamax, table sized 3¹⁵ not 3¹⁶ | **112,096** | **13.7 MB** | **0.023 s** |
 
 Overall that is 17x fewer positions, a third of the memory and 15x the speed of
-the version this project started from, and the first row was answering the
-wrong question.
+the version this project started from.
 
 `make bench` reproduces the last row.
 
